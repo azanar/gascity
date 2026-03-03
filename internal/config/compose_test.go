@@ -451,7 +451,7 @@ prompt_template = "//prompts/worker.md"
 	}
 }
 
-func TestLoadWithIncludes_IncludeCleared(t *testing.T) {
+func TestLoadWithIncludes_IncludePreserved(t *testing.T) {
 	fs := fsys.NewFake()
 	fs.Files["/city/city.toml"] = []byte(`
 include = ["a.toml"]
@@ -467,8 +467,9 @@ name = "worker"
 	if err != nil {
 		t.Fatalf("LoadWithIncludes: %v", err)
 	}
-	if cfg.Include != nil {
-		t.Errorf("Include should be nil after merge, got %v", cfg.Include)
+	// Include must be preserved so Marshal() round-trips city.toml correctly.
+	if len(cfg.Include) != 1 || cfg.Include[0] != "a.toml" {
+		t.Errorf("Include = %v, want [a.toml]", cfg.Include)
 	}
 }
 

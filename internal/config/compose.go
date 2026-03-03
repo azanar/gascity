@@ -52,10 +52,12 @@ func LoadWithIncludes(fs fsys.FS, path string, extraIncludes ...string) (*City, 
 	trackRigs(prov, root.Rigs, path)
 	trackWorkspace(prov, rootMeta, path)
 
-	// Extract and clear includes. CLI -f files are appended after.
-	includes := root.Include
+	// Extract includes for processing. CLI -f files are appended after.
+	// Preserve the original Include value so Marshal() round-trips it.
+	origInclude := root.Include
+	includes := append([]string{}, root.Include...)
 	includes = append(includes, extraIncludes...)
-	root.Include = nil
+	root.Include = origInclude
 
 	for _, inc := range includes {
 		var fragPath string
