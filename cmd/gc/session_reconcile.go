@@ -349,6 +349,24 @@ var knownSessionStates = map[string]bool{
 	"":            true, // empty state is valid (legacy beads)
 }
 
+// healSafeStates are the states that healState is allowed to overwrite.
+// States like "creating" and "quarantined" are managed by session.Manager
+// and must NOT be overwritten by healState. When Phase 2 wires these
+// states through the controller, healState must check this set before
+// writing. Until then, "creating" and "quarantined" beads don't reach
+// healState in practice because session.Manager isn't connected yet.
+//
+// TODO(phase2): Add guard in healState to skip beads not in healSafeStates.
+var healSafeStates = map[string]bool{ //nolint:unused // Phase 2 guard
+	"active":    true,
+	"asleep":    true,
+	"awake":     true,
+	"stopped":   true,
+	"suspended": true,
+	"orphaned":  true,
+	"":          true,
+}
+
 // isKnownState returns true if the bead's metadata state is recognized by
 // the current reconciler. Unknown states (from a newer version) are skipped
 // to prevent panics during rollback.
