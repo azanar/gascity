@@ -385,6 +385,48 @@ func topoOrder(sessions []beads.Bead, deps map[string][]string) []beads.Bead {
 	return result
 }
 
+// knownSessionStates is the set of bead metadata "state" values that the
+// current reconciler understands. Beads with unrecognized states are skipped
+// during reconciliation to allow forward-compatible rollback from newer
+// versions that add states like "draining" or "archived".
+var knownSessionStates = map[string]bool{
+	"active":      true,
+	"asleep":      true,
+	"awake":       true,
+	"stopped":     true,
+	"suspended":   true,
+	"orphaned":    true,
+	"closed":      true,
+	"quarantined": true,
+	"creating":    true,
+	"":            true, // empty state is valid (legacy beads)
+}
+
+// healSafeStates are the states that healState is allowed to overwrite.
+// States like "creating" and "quarantined" are managed by session.Manager
+// and must NOT be overwritten by healState. When Phase 2 wires these
+// states through the controller, healState must check this set before
+// writing. Until then, "creating" and "quarantined" beads don't reach
+// healState in practice because session.Manager isn't connected yet.
+//
+// TODO(phase2): Add guard in healState to skip beads not in healSafeStates.
+var healSafeStates = map[string]bool{ //nolint:unused // Phase 2 guard
+	"active":    true,
+	"asleep":    true,
+	"awake":     true,
+	"stopped":   true,
+	"suspended": true,
+	"orphaned":  true,
+	"":          true,
+}
+
+// isKnownState returns true if the bead's metadata state is recognized by
+// the current reconciler. Unknown states (from a newer version) are skipped
+// to prevent panics during rollback.
+func isKnownState(session beads.Bead) bool {
+	return knownSessionStates[session.Metadata["state"]]
+}
+
 // reverseBeads returns a reversed copy of the bead slice.
 func reverseBeads(beadSlice []beads.Bead) []beads.Bead {
 	n := len(beadSlice)
