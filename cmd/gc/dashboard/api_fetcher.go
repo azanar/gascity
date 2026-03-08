@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -18,6 +19,12 @@ type APIFetcher struct {
 	cityName  string       // for display
 	cityScope string       // supervisor city scope; when set, /v0/x → /v0/city/{scope}/x
 	client    *http.Client // shared client with timeout
+
+	// sessionsOnce caches the session list for a single dashboard render.
+	// Multiple panel fetchers run in parallel and all need session data;
+	// this avoids redundant API calls.
+	sessionsOnce   sync.Once
+	sessionsCached []apiSessionResponse
 }
 
 // NewAPIFetcher creates a new API-backed fetcher.
@@ -32,13 +39,17 @@ func NewAPIFetcher(baseURL, cityPath, cityName string) *APIFetcher {
 	}
 }
 
-// WithScope returns a shallow copy of the fetcher with the given city scope.
+// WithScope returns a copy of the fetcher with the given city scope.
 // The copy shares the HTTP client but routes API paths through
-// /v0/city/{scope}/... for supervisor mode.
+// /v0/city/{scope}/... for supervisor mode. The session cache is reset.
 func (f *APIFetcher) WithScope(cityScope string) *APIFetcher {
-	cp := *f
-	cp.cityScope = cityScope
-	return &cp
+	return &APIFetcher{
+		baseURL:   f.baseURL,
+		cityPath:  f.cityPath,
+		cityName:  f.cityName,
+		cityScope: cityScope,
+		client:    f.client,
+	}
 }
 
 // --- API response types (matching internal/api JSON shapes) ---
@@ -55,14 +66,36 @@ type apiAgentResponse struct {
 	Suspended  bool            `json:"suspended"`
 	Rig        string          `json:"rig,omitempty"`
 	Pool       string          `json:"pool,omitempty"`
-	Session    *apiSessionInfo `json:"session,omitempty"`
+	Session    *apiSessionMeta `json:"session,omitempty"`
 	ActiveBead string          `json:"active_bead,omitempty"`
 }
 
-type apiSessionInfo struct {
+type apiSessionMeta struct {
 	Name         string     `json:"name"`
 	LastActivity *time.Time `json:"last_activity,omitempty"`
 	Attached     bool       `json:"attached"`
+}
+
+// apiSessionResponse mirrors the session API response (GET /v0/sessions).
+type apiSessionResponse struct {
+	ID          string `json:"id"`
+	Template    string `json:"template"`
+	State       string `json:"state"`
+	Reason      string `json:"reason,omitempty"`
+	Title       string `json:"title"`
+	Provider    string `json:"provider"`
+	DisplayName string `json:"display_name,omitempty"`
+	SessionName string `json:"session_name"`
+	CreatedAt   string `json:"created_at"`
+	LastActive  string `json:"last_active,omitempty"`
+	Attached    bool   `json:"attached"`
+	Rig         string `json:"rig,omitempty"`
+	Pool        string `json:"pool,omitempty"`
+	Running     bool   `json:"running"`
+	ActiveBead  string `json:"active_bead,omitempty"`
+	LastOutput  string `json:"last_output,omitempty"`
+	Model       string `json:"model,omitempty"`
+	ContextPct  *int   `json:"context_pct,omitempty"`
 }
 
 type apiRigResponse struct {
@@ -180,95 +213,72 @@ func (f *APIFetcher) FetchRigs() ([]RigRow, error) {
 	return rows, nil
 }
 
-// FetchWorkers returns all running worker agents with activity data.
+// FetchWorkers returns all running worker sessions with activity data.
+// Uses the session API as the single source of truth.
 func (f *APIFetcher) FetchWorkers() ([]WorkerRow, error) {
-	var agents []apiAgentResponse
-	if err := f.getList("/v0/agents", &agents); err != nil {
-		return nil, fmt.Errorf("fetching agents: %w", err)
-	}
+	sessions := f.fetchSessions()
 
 	var workers []WorkerRow
-	for _, agent := range agents {
-		if !agent.Running {
+	for _, sess := range sessions {
+		if !sess.Running {
 			continue
 		}
 		// Only show rig-scoped pool members in the workers panel.
-		if agent.Pool == "" || agent.Rig == "" {
+		if sess.Pool == "" || sess.Rig == "" {
 			continue
 		}
 
-		var lastActivity time.Time
-		sessionName := agent.Name
-		if agent.Session != nil {
-			sessionName = agent.Session.Name
-			if agent.Session.LastActivity != nil {
-				lastActivity = *agent.Session.LastActivity
-			}
-		}
-
+		lastActivity := parseTime(sess.LastActive)
 		activityAge := time.Duration(0)
 		if !lastActivity.IsZero() {
 			activityAge = time.Since(lastActivity)
 		}
 
-		issueID := agent.ActiveBead
+		issueID := sess.ActiveBead
 		var issueTitle string
 		if issueID != "" {
-			// Try to get bead title
 			var bead apiBead
 			if err := f.get("/v0/bead/"+issueID, &bead); err == nil {
 				issueTitle = bead.Title
 			}
 		}
 
-		workStatus := calculateWorkerWorkStatus(activityAge, issueID, agent.Name,
+		workStatus := calculateWorkerWorkStatus(activityAge, issueID, sess.Template,
 			5*time.Minute, defaultGUPPViolationTimeout)
 
-		// Get status hint via peek API.
-		statusHint := f.getStatusHint(agent.Name)
-
-		// Derive agent type from pool base name (e.g. "hello-world/polecat" → "polecat").
-		agentType := agent.Pool
-		if idx := strings.LastIndex(agentType, "/"); idx >= 0 {
-			agentType = agentType[idx+1:]
-		}
-
 		workers = append(workers, WorkerRow{
-			Name:         agent.Name,
-			Rig:          agent.Rig,
-			SessionID:    sessionName,
+			Name:         sess.Template,
+			Rig:          sess.Rig,
+			SessionID:    sess.SessionName,
 			LastActivity: calculateActivity(lastActivity),
 			IssueID:      issueID,
 			IssueTitle:   issueTitle,
 			WorkStatus:   workStatus,
-			AgentType:    agentType,
-			StatusHint:   statusHint,
+			AgentType:    sess.Pool,
+			StatusHint:   truncate(sess.LastOutput, 60),
 		})
 	}
 
 	return workers, nil
 }
 
-// FetchDogs returns city-scoped pool agents (rig == "").
+// FetchDogs returns city-scoped pool sessions (rig == "").
 func (f *APIFetcher) FetchDogs() ([]DogRow, error) {
-	var agents []apiAgentResponse
-	if err := f.getList("/v0/agents", &agents); err != nil {
-		return nil, nil
-	}
+	sessions := f.fetchSessions()
 
 	var rows []DogRow
-	for _, agent := range agents {
-		if agent.Rig != "" || agent.Pool == "" {
+	for _, sess := range sessions {
+		if sess.Rig != "" || sess.Pool == "" {
 			continue
 		}
 
 		state := "idle"
-		if agent.ActiveBead != "" {
+		if sess.ActiveBead != "" {
 			state = "working"
 		}
 
 		rows = append(rows, DogRow{
-			Name:  agent.Name,
+			Name:  sess.Template,
 			State: state,
 		})
 	}
@@ -279,38 +289,36 @@ func (f *APIFetcher) FetchDogs() ([]DogRow, error) {
 	return rows, nil
 }
 
-// FetchMayor returns the coordinator agent's status.
+// FetchMayor returns the coordinator session's status.
+// The coordinator is a city-scoped non-pool session.
 func (f *APIFetcher) FetchMayor() (*MayorStatus, error) {
 	status := &MayorStatus{IsAttached: false}
 
-	var agents []apiAgentResponse
-	if err := f.getList("/v0/agents", &agents); err != nil {
-		return status, nil
-	}
+	sessions := f.fetchSessions()
 
-	// Find city-scoped non-pool agent (the coordinator).
-	var mayor *apiAgentResponse
-	for i := range agents {
-		if agents[i].Pool == "" && agents[i].Rig == "" {
-			mayor = &agents[i]
+	// Find city-scoped non-pool session (the coordinator).
+	var coordinator *apiSessionResponse
+	for i := range sessions {
+		if sessions[i].Pool == "" && sessions[i].Rig == "" {
+			coordinator = &sessions[i]
 			break
 		}
 	}
-	if mayor == nil {
+	if coordinator == nil {
 		return status, nil
 	}
 
-	if mayor.Session != nil {
-		status.IsAttached = mayor.Session.Attached
-		status.SessionName = mayor.Session.Name
-		if mayor.Session.LastActivity != nil {
-			age := time.Since(*mayor.Session.LastActivity)
-			status.LastActivity = formatTimestamp(*mayor.Session.LastActivity)
-			status.IsActive = age < 5*time.Minute
-		}
-	}
+	status.IsAttached = coordinator.Attached
+	status.SessionName = coordinator.SessionName
 	if status.SessionName == "" {
-		status.SessionName = mayor.Name
+		status.SessionName = coordinator.Template
+	}
+
+	lastActive := parseTime(coordinator.LastActive)
+	if !lastActive.IsZero() {
+		age := time.Since(lastActive)
+		status.LastActivity = formatTimestamp(lastActive)
+		status.IsActive = age < 5*time.Minute
 	}
 
 	return status, nil
@@ -627,15 +635,13 @@ func (f *APIFetcher) FetchHealth() (*HealthRow, error) {
 		return row, nil
 	}
 
-	// Count healthy/unhealthy agents.
-	var agents []apiAgentResponse
-	if err := f.getList("/v0/agents", &agents); err == nil {
-		for _, agent := range agents {
-			if agent.Running {
-				row.HealthyAgents++
-			} else {
-				row.UnhealthyAgents++
-			}
+	// Count healthy/unhealthy from sessions.
+	sessions := f.fetchSessions()
+	for _, sess := range sessions {
+		if sess.Running {
+			row.HealthyAgents++
+		} else {
+			row.UnhealthyAgents++
 		}
 	}
 
@@ -765,33 +771,42 @@ func (f *APIFetcher) FetchMergeQueue() ([]MergeQueueRow, error) {
 	return result, nil
 }
 
-// getStatusHint fetches the last conversation turn from an agent's output.
-func (f *APIFetcher) getStatusHint(agentName string) string {
-	var outputResp struct {
-		Turns []struct {
-			Text string `json:"text"`
-		} `json:"turns"`
-	}
-	if err := f.get("/v0/agent/"+agentName+"/output", &outputResp); err != nil {
-		return ""
-	}
-	if len(outputResp.Turns) == 0 {
-		return ""
-	}
+// fetchSessions calls GET /v0/sessions?state=active&peek=true and returns all sessions.
+// Results are cached via sync.Once for the lifetime of a single dashboard render
+// so that parallel panel fetchers share one API call.
+func (f *APIFetcher) fetchSessions() []apiSessionResponse {
+	f.sessionsOnce.Do(func() {
+		if err := f.getList("/v0/sessions?state=active&peek=true", &f.sessionsCached); err != nil {
+			log.Printf("dashboard: fetchSessions: %v", err)
+		}
+	})
+	return f.sessionsCached
+}
 
-	// Use the last turn's text, find last non-empty line.
-	text := outputResp.Turns[len(outputResp.Turns)-1].Text
-	lines := strings.Split(text, "\n")
+// parseTime parses an RFC3339 timestamp, returning zero time on failure.
+func parseTime(s string) time.Time {
+	if s == "" {
+		return time.Time{}
+	}
+	t, _ := time.Parse(time.RFC3339, s)
+	return t
+}
+
+// truncate shortens a string to maxLen, adding "..." if truncated.
+func truncate(s string, maxLen int) string {
+	// Take last non-empty line (for peek output).
+	lines := strings.Split(s, "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := strings.TrimSpace(lines[i])
 		if line != "" {
-			if len(line) > 60 {
-				line = line[:57] + "..."
-			}
-			return line
+			s = line
+			break
 		}
 	}
-	return ""
+	if len(s) > maxLen {
+		return s[:maxLen-3] + "..."
+	}
+	return s
 }
 
 // detectRepoFromPath tries to extract owner/repo from a git working directory.

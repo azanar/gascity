@@ -28,6 +28,10 @@ type sessionResponse struct {
 	LastActive  string `json:"last_active,omitempty"`
 	Attached    bool   `json:"attached"`
 
+	// Classification fields derived from config (for dashboard grouping).
+	Rig  string `json:"rig,omitempty"`
+	Pool string `json:"pool,omitempty"`
+
 	// Enrichment fields for dashboard consumption.
 	Running       bool   `json:"running"`
 	ActiveBead    string `json:"active_bead,omitempty"`
@@ -39,6 +43,7 @@ type sessionResponse struct {
 
 func sessionToResponse(info session.Info, cfg *config.City) sessionResponse {
 	provider, displayName := resolveProviderInfo(info.Provider, cfg)
+	rig, _ := config.ParseQualifiedName(info.Template)
 	r := sessionResponse{
 		ID:          info.ID,
 		Template:    info.Template,
@@ -49,6 +54,12 @@ func sessionToResponse(info session.Info, cfg *config.City) sessionResponse {
 		SessionName: info.SessionName,
 		CreatedAt:   info.CreatedAt.Format(time.RFC3339),
 		Attached:    info.Attached,
+		Rig:         rig,
+	}
+	// Populate pool from config lookup. The pool field is the agent's
+	// base name (e.g., "polecat"), useful for dashboard type classification.
+	if agent, ok := findAgent(cfg, info.Template); ok && agent.IsPool() {
+		r.Pool = agent.Name
 	}
 	if !info.LastActive.IsZero() {
 		r.LastActive = info.LastActive.Format(time.RFC3339)
