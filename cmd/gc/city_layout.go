@@ -39,6 +39,9 @@ func cityAlreadyInitializedFS(fs fsys.FS, cityPath string) bool {
 }
 
 func normalizeInitFromLegacyContent(cityPath string) error {
+	// Automations must migrate before the broader formulas root so legacy
+	// .gc/formulas/automations content lands in top-level automations/ rather
+	// than being swept into formulas/automations.
 	steps := [][2]string{
 		{citylayout.LegacyPromptsRoot, citylayout.PromptsRoot},
 		{citylayout.LegacyAutomationsRoot, citylayout.AutomationsRoot},
@@ -168,6 +171,9 @@ func pruneEmptyDirs(path, stop string) error {
 		if path == stop || path == filepath.Dir(stop) {
 			return nil
 		}
+		if filepath.Base(path) == citylayout.RuntimeRoot {
+			return nil
+		}
 		entries, err := os.ReadDir(path)
 		if err != nil {
 			return nil
@@ -189,6 +195,9 @@ func pruneEmptyDirs(path, stop string) error {
 func pruneEmptyDirsFS(fs fsys.FS, path, stop string) error {
 	for {
 		if path == stop || path == filepath.Dir(stop) {
+			return nil
+		}
+		if filepath.Base(path) == citylayout.RuntimeRoot {
 			return nil
 		}
 		entries, err := fs.ReadDir(path)

@@ -99,3 +99,43 @@ func TestEnsureCityScaffoldMigratesLegacyPackStorage(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeInitFromLegacyContentMovesAutomationsBeforeFormulas(t *testing.T) {
+	cityDir := t.TempDir()
+	legacyAutomation := filepath.Join(cityDir, citylayout.LegacyAutomationsRoot, "digest", "automation.toml")
+	legacyFormula := filepath.Join(cityDir, citylayout.LegacyFormulasRoot, "digest.formula.toml")
+
+	for path, content := range map[string]string{
+		legacyAutomation: "[automation]\nformula = \"digest\"\ngate = \"manual\"\n",
+		legacyFormula:    "name = \"digest\"\n",
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := normalizeInitFromLegacyContent(cityDir); err != nil {
+		t.Fatalf("normalizeInitFromLegacyContent(%q): %v", cityDir, err)
+	}
+
+	assertPathExists(t, filepath.Join(cityDir, citylayout.AutomationsRoot, "digest", "automation.toml"))
+	assertPathExists(t, filepath.Join(cityDir, citylayout.FormulasRoot, "digest.formula.toml"))
+	assertPathMissing(t, filepath.Join(cityDir, citylayout.FormulasRoot, "automations", "digest", "automation.toml"))
+}
+
+func assertPathExists(t *testing.T, path string) {
+	t.Helper()
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected path to exist %q: %v", path, err)
+	}
+}
+
+func assertPathMissing(t *testing.T, path string) {
+	t.Helper()
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("expected path to be absent %q", path)
+	}
+}

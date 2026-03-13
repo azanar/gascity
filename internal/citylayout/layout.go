@@ -113,21 +113,6 @@ func CachePath(cityRoot string, rel ...string) string {
 	return filepath.Join(parts...)
 }
 
-// CanonicalRef rewrites a managed legacy ref to its visible canonical form.
-func CanonicalRef(ref string) string {
-	m, ok := managedRoots(ref)
-	if !ok {
-		return ref
-	}
-	if strings.HasPrefix(ref, m.legacy) {
-		return m.canonical + strings.TrimPrefix(ref, m.legacy)
-	}
-	if ref == m.legacy {
-		return m.canonical
-	}
-	return ref
-}
-
 // ResolveCityOwnedPath resolves a managed ref into its canonical and legacy
 // counterparts and notes whether the legacy copy was selected or shadowed.
 func ResolveCityOwnedPath(fs fsys.FS, cityRoot, ref string) ManagedRef {
