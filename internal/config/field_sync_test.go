@@ -34,6 +34,7 @@ func TestAgentFieldSync(t *testing.T) {
 		"SourceDir":              "runtime-only, set during pack/fragment loading",
 		"Fallback":               "pack composition hint, not overridable at runtime",
 		"PoolName":               "internal field set during pool expansion, not user-configurable",
+		"Implicit":               "runtime-only, set during InjectImplicitAgents, not user-configurable",
 	}
 
 	// Fields on AgentOverride/AgentPatch that don't map 1:1 to Agent fields.

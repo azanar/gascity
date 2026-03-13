@@ -62,7 +62,7 @@ name = "automationtown"
 [formulas]
 dir = "formulas"
 
-[[agents]]
+[[agent]]
 name = "deacon"
 start_command = "echo hello"
 

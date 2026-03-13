@@ -99,8 +99,8 @@ stderr 'invalid --timeout'
 [workspace]
 name = "dup-city"
 
-[[agents]]
+[[agent]]
 name = "worker"
 
-[[agents]]
+[[agent]]
 name = "worker"

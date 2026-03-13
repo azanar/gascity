@@ -37,7 +37,7 @@ shutdown_timeout = "5s"
 # includes = ["packs/gastown"]
 
 # Crew members are individually named, so they can't be pack-stamped:
-# [[agents]]
+# [[agent]]
 # name = "wolf"
 # dir = "myproject"
 # pre_start = ["packs/gastown/scripts/worktree-setup.sh /path/to/myproject wolf /path/to/city --sync"]

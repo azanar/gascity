@@ -174,7 +174,7 @@ provider = "claude"
 
 ```toml
 # agents/mayor.toml — a fragment
-[[agents]]
+[[agent]]
 name = "mayor"
 prompt_template = "prompts/mayor.md.tmpl"
 ```
@@ -185,16 +185,16 @@ prompt_template = "prompts/mayor.md.tmpl"
 name = "hello-world"
 path = "/home/user/hello-world"
 
-[[agents]]
+[[agent]]
 name = "witness"
 dir = "hello-world"
 prompt_template = "prompts/witness.md.tmpl"
 
-[[agents]]
+[[agent]]
 name = "polecat"
 dir = "hello-world"
 prompt_template = "prompts/polecat.md.tmpl"
-[agents.pool]
+[agent.pool]
 min = 0
 max = 5
 ```
@@ -214,19 +214,19 @@ name = "hello-world"
 path = "/opt/deploy/hello-world"
 
 # Tune pool size for an agent
-[[patches.agents]]
+[[patches.agent]]
 dir = "hello-world"
 name = "polecat"
 pool = { max = 10 }
 
 # Suspend an agent in dev
-[[patches.agents]]
+[[patches.agent]]
 dir = "hello-world"
 name = "refinery"
 suspended = true
 
 # Remove inherited env var
-[[patches.agents]]
+[[patches.agent]]
 dir = "hello-world"
 name = "polecat"
 env_remove = ["VERBOSE_LOGGING"]
@@ -276,7 +276,7 @@ to the city root directory, regardless of which file declared them:
 
 ```toml
 # overrides/production.toml
-[[patches.agents]]
+[[patches.agent]]
 dir = "hello-world"
 name = "witness"
 prompt_template = "//prompts/witness-prod.md.tmpl"  # city root
@@ -339,20 +339,20 @@ version = "1.0.0"
 schema = 1                  # pack schema version
 # requires_gc = ">=0.9.0"  # optional: minimum gc version
 
-[[agents]]
+[[agent]]
 name = "witness"
 prompt_template = "prompts/witness.md.tmpl"
 
-[[agents]]
+[[agent]]
 name = "refinery"
 isolation = "worktree"
 prompt_template = "prompts/refinery.md.tmpl"
 
-[[agents]]
+[[agent]]
 name = "polecat"
 isolation = "worktree"
 prompt_template = "prompts/polecat.md.tmpl"
-[agents.pool]
+[agent.pool]
 min = 0
 max = 3
 ```
@@ -500,13 +500,13 @@ inside arrays-of-tables** (`[[...]]`). Verified empirically:
 md.IsDefined("workspace", "provider")  // → true  ✓
 md.IsDefined("workspace", "name")      // → false ✓ (not in TOML)
 
-// For [[agents]] (array-of-tables):
-md.IsDefined("agents", "pool", "max")  // → false ✗ (WRONG — it IS defined)
-md.IsDefined("agents", "name")         // → false ✗ (WRONG — it IS defined)
+// For [[agent]] (array-of-tables):
+md.IsDefined("agent", "pool", "max")  // → false ✗ (WRONG — it IS defined)
+md.IsDefined("agent", "name")         // → false ✗ (WRONG — it IS defined)
 ```
 
 `Keys()` returns a correct flat list of all defined keys, but indexing
-into arrays-of-tables is ambiguous (which `[[agents]]` entry?).
+into arrays-of-tables is ambiguous (which `[[agent]]` entry?).
 
 **Implications for our design:**
 
@@ -536,7 +536,7 @@ type PoolOverride struct {
     Check *string `toml:"check,omitempty"`
 }
 
-// AgentPatch is the same shape, used in [[patches.agents]]
+// AgentPatch is the same shape, used in [[patches.agent]]
 type AgentPatch struct {
     Dir            string            `toml:"dir"`   // targeting key (required)
     Name           string            `toml:"name"`  // targeting key (required)

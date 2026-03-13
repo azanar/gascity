@@ -50,7 +50,7 @@ type City struct {
 	// Packs defines named remote pack sources fetched via git.
 	Packs map[string]PackSource `toml:"packs,omitempty"`
 	// Agents lists all configured agents in this city.
-	Agents []Agent `toml:"agents"`
+	Agents []Agent `toml:"agent"`
 	// Rigs lists external projects registered in the city.
 	Rigs []Rig `toml:"rigs,omitempty"`
 	// Patches holds targeted modifications applied after fragment merge.
@@ -1079,6 +1079,11 @@ type Agent struct {
 	// Set during pack/fragment loading; empty for inline agents.
 	// Runtime-only — not persisted to TOML or JSON.
 	SourceDir string `toml:"-" json:"-"`
+	// Implicit marks agents auto-generated from built-in providers.
+	// These have pool min=0, max=-1 and are available as sling targets
+	// even without an explicit [[agent]] entry in city.toml.
+	// Runtime-only — not persisted to TOML or JSON.
+	Implicit bool `toml:"-" json:"-"`
 	// DefaultSlingFormula is the formula name automatically applied via --on
 	// when beads are slung to this agent, unless --no-formula is set.
 	// Example: "mol-polecat-work"
@@ -1258,6 +1263,53 @@ func (a *Agent) defaultOnBoot() string {
 		` --status=in_progress --json 2>/dev/null | ` +
 		`jq -r '.[].id' 2>/dev/null | ` +
 		`xargs -rI{} bd update {} --unclaim 2>/dev/null`
+}
+
+// InjectImplicitAgents adds an implicit agent for each built-in provider
+// that doesn't already have an explicit agent with the same name (city-scoped).
+// InjectImplicitAgents adds on-demand agents for every built-in provider at
+// both city scope and each rig scope. Pool min=0, max=-1 (unlimited) so they
+// are available as sling targets out of the box without city.toml configuration.
+// Explicit agents always win — if city.toml defines [[agent]] name="claude"
+// (or a rig-scoped equivalent), no implicit agent is added for that scope.
+func InjectImplicitAgents(cfg *City) {
+	// Build set of existing agent keys (dir, name).
+	type agentKey struct{ dir, name string }
+	existing := make(map[agentKey]bool, len(cfg.Agents))
+	for _, a := range cfg.Agents {
+		existing[agentKey{a.Dir, a.Name}] = true
+	}
+
+	providers := BuiltinProviderOrder()
+
+	// City-scoped implicit agents.
+	for _, name := range providers {
+		if existing[agentKey{"", name}] {
+			continue
+		}
+		cfg.Agents = append(cfg.Agents, Agent{
+			Name:     name,
+			Provider: name,
+			Pool:     &PoolConfig{Min: 0, Max: -1},
+			Implicit: true,
+		})
+	}
+
+	// Rig-scoped implicit agents.
+	for _, rig := range cfg.Rigs {
+		for _, name := range providers {
+			if existing[agentKey{rig.Name, name}] {
+				continue
+			}
+			cfg.Agents = append(cfg.Agents, Agent{
+				Name:     name,
+				Dir:      rig.Name,
+				Provider: name,
+				Pool:     &PoolConfig{Min: 0, Max: -1},
+				Implicit: true,
+			})
+		}
+	}
 }
 
 // ValidateAgents checks agent configurations for errors. It returns an error

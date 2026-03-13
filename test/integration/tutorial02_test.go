@@ -15,7 +15,7 @@ import (
 // agents run concurrently; each gets a different bead assigned via hook.
 //
 // This tests the key Tutorial 02 concepts:
-//   - Multiple [[agents]] in city.toml
+//   - Multiple [[agent]] in city.toml
 //   - Hook-based assignment to specific named agents
 //   - Each agent processes only its own hooked work
 func TestTutorial02_BashAgent(t *testing.T) {

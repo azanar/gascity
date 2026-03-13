@@ -17,7 +17,7 @@ supervision. It is the subsystem within the controller that monitors
 agent liveness, detects configuration drift, enforces crash loop
 quarantine, kills idle agents, and dispatches automations on a periodic
 tick. Health Patrol follows the Erlang/OTP supervision model: the
-controller is the supervisor, agents are workers, `[[agents]]` entries
+controller is the supervisor, agents are workers, `[[agent]]` entries
 are child specs, and "let it crash" is realized through GUPP + beads
 (agents die, hooks persist, fresh sessions resume the work).
 
@@ -250,7 +250,7 @@ Health Patrol follows Erlang/OTP patterns mapped to Gas City:
 |--------------------------|-------------------------------------------|
 | Supervisor               | Controller (`controllerLoop`)             |
 | Worker                   | Agent (any role)                          |
-| Child spec               | `[[agents]]` entry in `city.toml`         |
+| Child spec               | `[[agent]]` entry in `city.toml`         |
 | one_for_one restart      | Restart dead agent only (no cascade)      |
 | max_restarts/max_seconds | `max_restarts` / `restart_window`         |
 | Links (death propagates) | Not implemented (no `depends_on` yet)     |
@@ -312,10 +312,10 @@ skip = ["noisy-automation"] # automation names to exclude from dispatch
 max_timeout = "120s"        # hard cap on per-automation timeout (default: uncapped)
 ```
 
-Per-agent idle timeout is configured on individual `[[agents]]` entries:
+Per-agent idle timeout is configured on individual `[[agent]]` entries:
 
 ```toml
-[[agents]]
+[[agent]]
 name = "worker"
 idle_timeout = "30m"        # restart if no I/O activity for 30 minutes
 ```

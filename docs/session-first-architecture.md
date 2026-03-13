@@ -57,7 +57,7 @@ This creates several problems:
 
 **INV-1: Creating a session requires only a target template.**
 A template is a reusable agent definition (provider, prompt, env, hooks, etc.)
-drawn from `[[agents]]` config. Creating a session from a template resolves
+drawn from `[[agent]]` config. Creating a session from a template resolves
 the provider, builds the command, and starts the runtime.
 
 **INV-2: Non-pool templates allow unlimited concurrent sessions.**
@@ -407,18 +407,18 @@ row is a test case in `TestExecStore_PartialFailureRepair`.
 
 ### Template Model
 
-Templates are defined in `city.toml` via `[[agents]]` — the existing config
+Templates are defined in `city.toml` via `[[agent]]` — the existing config
 format. The key shift is conceptual: agents become templates, and templates
 produce sessions.
 
 ```toml
-[[agents]]
+[[agent]]
 name = "polecat"
 provider = "claude"
 prompt_template = "polecat.md"
 
 # Pool policy (optional)
-[agents.pool]
+[agent.pool]
 min = 0
 max = 5                    # max active sessions
 check = "bd ready --label=pool:polecat | jq length"
@@ -435,7 +435,7 @@ max_unavailable = 1         # max sessions drained simultaneously for drift
 archived_secret_ttl = "24h" # scrub secrets from wake_mode=fresh archives
 
 # Session defaults (overridable per-session)
-[agents.defaults]
+[agent.defaults]
 model = "opus"             # default model
 wake_mode = "fresh"        # "fresh" or "resume"
 allow_overlay = ["model", "name", "title"]  # prompt requires explicit opt-in
@@ -695,7 +695,7 @@ Environment variable overrides use a **per-template allowlist**, not a
 global denylist. Templates declare which env vars may be overridden:
 
 ```toml
-[agents.defaults]
+[agent.defaults]
 allow_env_override = ["TARGET_URL", "LOG_LEVEL", "MODEL_TEMPERATURE"]
 ```
 
@@ -1078,8 +1078,8 @@ The session conformance suite (`internal/session/conformance_test.go`) gains:
 
 ### Backward Compatibility
 
-- **city.toml format:** No breaking changes. `[[agents]]` syntax is
-  unchanged. Pool config is unchanged. The `[agents.defaults]` section
+- **city.toml format:** No breaking changes. `[[agent]]` syntax is
+  unchanged. Pool config is unchanged. The `[agent.defaults]` section
   and new pool fields (`drain_timeout`, `archive_order`, etc.) are additive.
 - **CLI commands:** `gc session new/suspend/peek/attach` are the primary
   interface. `gc agent` is config-only (add/suspend/resume).

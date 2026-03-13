@@ -94,18 +94,18 @@ stdout 'Task three'
 [workspace]
 name = "mailtown"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 start_command = "echo hello"
 
-[[agents]]
+[[agent]]
 name = "deacon"
 start_command = "echo hello"
 
-[[agents]]
+[[agent]]
 name = "witness"
 start_command = "echo hello"
 
-[[agents]]
+[[agent]]
 name = "worker"
 start_command = "echo hello"

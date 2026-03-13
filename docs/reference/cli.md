@@ -77,7 +77,7 @@ gc agent
 
 Add a new agent to the workspace configuration.
 
-Appends an [[agents]] block to city.toml. The agent will be started
+Appends an [[agent]] block to city.toml. The agent will be started
 on the next "gc start" or controller reconcile tick. Use --dir to
 scope the agent to a rig's working directory.
 

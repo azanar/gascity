@@ -8,19 +8,19 @@
 name = "my-city"
 provider = "claude"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 prompt_template = ".gc/prompts/mayor.md"
 
-[[agents]]
+[[agent]]
 name = "worker-1"
 prompt_template = ".gc/prompts/worker.md"
 
-[[agents]]
+[[agent]]
 name = "worker-2"
 prompt_template = ".gc/prompts/worker.md"
 
-[[agents]]
+[[agent]]
 name = "worker-3"
 prompt_template = ".gc/prompts/worker.md"
 

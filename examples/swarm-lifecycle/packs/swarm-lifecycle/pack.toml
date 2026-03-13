@@ -12,7 +12,7 @@ schema = 1
 city_agents = []
 
 # ── CODER — file-only worker. Pool of 5. Rig-scoped. ────────────────
-[[agents]]
+[[agent]]
 name = "coder"
 scope = "rig"
 prompt_template = "prompts/coder.md.tmpl"
@@ -20,12 +20,12 @@ start_command = "{{.ConfigDir}}/scripts/mock-coder.sh"
 nudge = "Find and claim a bead, create a file, close the bead."
 idle_timeout = "5m"
 
-[agents.pool]
+[agent.pool]
 min = 0
 max = 5
 
 # ── MERGER — git janitor. Singleton. Rig-scoped. ────────────────────
-[[agents]]
+[[agent]]
 name = "merger"
 scope = "rig"
 prompt_template = "prompts/merger.md.tmpl"

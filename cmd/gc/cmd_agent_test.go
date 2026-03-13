@@ -80,11 +80,11 @@ func packConfigWithFragment(t *testing.T) fsys.Fake {
 [workspace]
 name = "test-city"
 
-[[agents]]
+[[agent]]
 name = "inline-agent"
 `)
 	// Fragment that defines a pack-derived agent.
-	fs.Files["/city/packs/mypack/agents.toml"] = []byte(`[[agents]]
+	fs.Files["/city/packs/mypack/agents.toml"] = []byte(`[[agent]]
 name = "pack-worker"
 dir = "myrig"
 `)

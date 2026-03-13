@@ -128,7 +128,7 @@ cat > "$DEMO_CITY/city.toml" <<EOF
 name = "eks-demo"
 start_command = "true"
 
-[[agents]]
+[[agent]]
 name = "worker"
 scope = "rig"
 prompt_template = "packs/hyperscale/prompts/worker.md.tmpl"
@@ -137,7 +137,7 @@ nudge = "Pick up a bead, process it, close it."
 idle_timeout = "5m"
 
 # ── SCALE-UP: Change $INITIAL → $SCALE below ─────────────────────────────
-[agents.pool]
+[agent.pool]
 min = 0
 max = $INITIAL
 check = "bd list --label=pool:worker --status=open --json 2>/dev/null | jq length 2>/dev/null || echo 0"

@@ -9,7 +9,7 @@ import (
 
 func TestCheckUndecodedKeysDetectsTypo(t *testing.T) { //nolint:misspell // intentional typos in test data
 	typo := "prompt_" + "tempalte" //nolint:misspell // intentional typo under test
-	input := "[workspace]\nname = \"test\"\n\n[[agents]]\nname = \"mayor\"\n" + typo + " = \"prompts/mayor.md\"\n"
+	input := "[workspace]\nname = \"test\"\n\n[[agent]]\nname = \"mayor\"\n" + typo + " = \"prompts/mayor.md\"\n"
 	var cfg City
 	md, err := toml.Decode(input, &cfg)
 	if err != nil {
@@ -39,7 +39,7 @@ func TestCheckUndecodedKeysNoWarningsForValidConfig(t *testing.T) {
 [workspace]
 name = "test"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 prompt_template = "prompts/mayor.md"
 `
@@ -60,7 +60,7 @@ func TestCheckUndecodedKeysMultipleTypos(t *testing.T) {
 [workspace]
 name = "test"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 promtp_template = "bad"
 idel_timeout = "5m"
@@ -162,7 +162,7 @@ func TestParseWithMetaWarnings(t *testing.T) {
 [workspace]
 name = "test"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 proivder = "claude"
 `

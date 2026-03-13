@@ -99,7 +99,7 @@ func writeAgentsToml(t *testing.T, cityDir, cityName string, agents []agentConfi
 	t.Helper()
 	content := "[workspace]\nname = " + quote(cityName) + "\n"
 	for _, a := range agents {
-		content += fmt.Sprintf("\n[[agents]]\nname = %s\nstart_command = %s\n",
+		content += fmt.Sprintf("\n[[agent]]\nname = %s\nstart_command = %s\n",
 			quote(a.Name), quote(a.StartCommand))
 	}
 	tomlPath := filepath.Join(cityDir, "city.toml")

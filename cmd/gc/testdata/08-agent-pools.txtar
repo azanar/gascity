@@ -57,11 +57,11 @@ stdout 'City started.'
 [workspace]
 name = "pool-city"
 
-[[agents]]
+[[agent]]
 name = "worker"
 start_command = "echo hello"
 
-[agents.pool]
+[agent.pool]
 min = 0
 max = 5
 check = "echo 3"
@@ -72,11 +72,11 @@ check = "echo 3"
 [workspace]
 name = "min-city"
 
-[[agents]]
+[[agent]]
 name = "builder"
 start_command = "echo hello"
 
-[agents.pool]
+[agent.pool]
 min = 2
 max = 10
 check = "echo 0"
@@ -87,7 +87,7 @@ check = "echo 0"
 [workspace]
 name = "no-pool-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 start_command = "echo hello"
 
@@ -97,15 +97,15 @@ start_command = "echo hello"
 [workspace]
 name = "mixed-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 start_command = "echo hello"
 
-[[agents]]
+[[agent]]
 name = "worker"
 start_command = "echo hello"
 
-[agents.pool]
+[agent.pool]
 min = 0
 max = 5
 check = "echo 2"
@@ -116,11 +116,11 @@ check = "echo 2"
 [workspace]
 name = "singleton-city"
 
-[[agents]]
+[[agent]]
 name = "refinery"
 start_command = "echo hello"
 
-[agents.pool]
+[agent.pool]
 min = 0
 max = 1
 check = "echo 1"

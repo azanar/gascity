@@ -15,7 +15,7 @@ schema = 1
 city_agents = ["mayor", "deacon", "dog"]
 
 # ── MAYOR — Global coordinator. One per city. ──────────────────────────
-[[agents]]
+[[agent]]
 name = "mayor"
 scope = "city"
 prompt_template = "prompts/mayor.md.tmpl"
@@ -24,7 +24,7 @@ overlay_dir = "overlays/default"
 idle_timeout = "1h"
 
 # ── DEACON — Daemon beacon / patrol executor. One per city. ────────────
-[[agents]]
+[[agent]]
 name = "deacon"
 scope = "city"
 prompt_template = "prompts/deacon.md.tmpl"
@@ -33,7 +33,7 @@ overlay_dir = "overlays/default"
 idle_timeout = "1h"
 
 # ── DOG — City-level infrastructure workers. Pool. ─────────────────────
-[[agents]]
+[[agent]]
 name = "dog"
 scope = "city"
 prompt_template = "prompts/dog.md.tmpl"
@@ -41,12 +41,12 @@ nudge = "Check your hook for work assignments."
 overlay_dir = "overlays/default"
 idle_timeout = "2h"
 
-[agents.pool]
+[agent.pool]
 min = 0
 max = 3
 
 # ── CODER — peer worker. Pool of N. Rig-scoped. ───────────────────────
-[[agents]]
+[[agent]]
 name = "coder"
 scope = "rig"
 prompt_template = "prompts/coder.md.tmpl"
@@ -54,12 +54,12 @@ nudge = "Run bd ready --unassigned, check mail, then claim and work on a task."
 overlay_dir = "overlays/default"
 idle_timeout = "2h"
 
-[agents.pool]
+[agent.pool]
 min = 1
 max = 5
 
 # ── COMMITTER — dedicated commit agent. Singleton. Rig-scoped. ────────
-[[agents]]
+[[agent]]
 name = "committer"
 scope = "rig"
 prompt_template = "prompts/committer.md.tmpl"

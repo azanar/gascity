@@ -29,11 +29,11 @@ name = "gastown"
 version = "1.0.0"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "witness"
 prompt_template = "prompts/witness.md"
 
-[[agents]]
+[[agent]]
 name = "refinery"
 `)
 
@@ -72,9 +72,9 @@ name = "gastown"
 version = "1.0.0"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "polecat"
-[agents.pool]
+[agent.pool]
 min = 0
 max = 3
 `)
@@ -128,7 +128,7 @@ name = "basic"
 version = "0.1.0"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "worker"
 `)
 
@@ -163,7 +163,7 @@ name = "gastown"
 version = "1.0.0"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "witness"
 `)
 
@@ -198,9 +198,9 @@ name = "gastown"
 version = "1.0.0"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "polecat"
-[agents.pool]
+[agent.pool]
 min = 0
 max = 3
 `)
@@ -242,7 +242,7 @@ name = "gastown"
 version = "1.0.0"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "witness"
 `)
 
@@ -277,7 +277,7 @@ name = "gastown"
 version = "1.0.0"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "witness"
 `)
 
@@ -392,11 +392,11 @@ name = "gastown"
 version = "1.0.0"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "witness"
 prompt_template = "prompts/witness.md"
 
-[[agents]]
+[[agent]]
 name = "refinery"
 prompt_template = "//prompts/shared.md"
 `)
@@ -433,7 +433,7 @@ schema = 1
 command = "codex"
 args = ["--full-auto"]
 
-[[agents]]
+[[agent]]
 name = "witness"
 provider = "codex"
 `)
@@ -472,7 +472,7 @@ schema = 1
 [providers.claude]
 command = "claude-from-topo"
 
-[[agents]]
+[[agent]]
 name = "witness"
 `)
 
@@ -569,7 +569,7 @@ name = "gastown"
 version = "1.0.0"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "witness"
 prompt_template = "prompts/witness.md"
 `)
@@ -580,7 +580,7 @@ prompt_template = "prompts/witness.md"
 [workspace]
 name = "test-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 
 [[rigs]]
@@ -594,18 +594,19 @@ includes = ["packs/gt"]
 		t.Fatalf("LoadWithIncludes: %v", err)
 	}
 
-	// Should have mayor + witness.
-	if len(cfg.Agents) != 2 {
-		t.Fatalf("got %d agents, want 2", len(cfg.Agents))
+	// Should have mayor + witness (explicit agents only).
+	explicit := explicitAgents(cfg.Agents)
+	if len(explicit) != 2 {
+		t.Fatalf("got %d explicit agents, want 2", len(explicit))
 	}
-	if cfg.Agents[0].Name != "mayor" {
-		t.Errorf("first agent = %q, want mayor", cfg.Agents[0].Name)
+	if explicit[0].Name != "mayor" {
+		t.Errorf("first agent = %q, want mayor", explicit[0].Name)
 	}
-	if cfg.Agents[1].Name != "witness" {
-		t.Errorf("second agent = %q, want witness", cfg.Agents[1].Name)
+	if explicit[1].Name != "witness" {
+		t.Errorf("second agent = %q, want witness", explicit[1].Name)
 	}
-	if cfg.Agents[1].Dir != "hello-world" {
-		t.Errorf("witness dir = %q, want hello-world", cfg.Agents[1].Dir)
+	if explicit[1].Dir != "hello-world" {
+		t.Errorf("witness dir = %q, want hello-world", explicit[1].Dir)
 	}
 
 	// Provenance should track pack agents.
@@ -624,9 +625,9 @@ name = "gastown"
 version = "1.0.0"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "witness"
-[agents.env]
+[agent.env]
 ROLE = "witness"
 DEBUG = "false"
 `)
@@ -672,7 +673,7 @@ name = "gastown"
 version = "2.1.0"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "witness"
 `)
 
@@ -862,7 +863,7 @@ func TestExpandCityPacks_Multiple(t *testing.T) {
 name = "alpha"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "agent-a"
 `)
 	writeFile(t, dir, "packs/beta/pack.toml", `
@@ -870,7 +871,7 @@ name = "agent-a"
 name = "beta"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "agent-b"
 `)
 
@@ -916,7 +917,7 @@ schema = 1
 [formulas]
 dir = "formulas"
 
-[[agents]]
+[[agent]]
 name = "agent-a"
 `)
 	writeFile(t, dir, "packs/alpha/formulas/mol-a.toml", "test")
@@ -928,7 +929,7 @@ schema = 1
 [formulas]
 dir = "formulas"
 
-[[agents]]
+[[agent]]
 name = "agent-b"
 `)
 	writeFile(t, dir, "packs/beta/formulas/mol-b.toml", "test")
@@ -979,7 +980,7 @@ func TestExpandCityPacks_BackwardCompat(t *testing.T) {
 name = "gastown"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 
@@ -1010,7 +1011,7 @@ schema = 1
 [providers.codex]
 command = "codex"
 
-[[agents]]
+[[agent]]
 name = "agent-a"
 `)
 	writeFile(t, dir, "packs/beta/pack.toml", `
@@ -1024,7 +1025,7 @@ command = "gemini"
 [providers.codex]
 command = "codex-from-beta"
 
-[[agents]]
+[[agent]]
 name = "agent-b"
 `)
 
@@ -1065,7 +1066,7 @@ func TestExpandPacks_MultiplePerRig(t *testing.T) {
 name = "alpha"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "worker-a"
 `)
 	writeFile(t, dir, "packs/beta/pack.toml", `
@@ -1073,7 +1074,7 @@ name = "worker-a"
 name = "beta"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "worker-b"
 `)
 
@@ -1118,7 +1119,7 @@ schema = 1
 [formulas]
 dir = "formulas"
 
-[[agents]]
+[[agent]]
 name = "worker-a"
 `)
 	writeFile(t, dir, "packs/alpha/formulas/mol-a.toml", "test")
@@ -1130,7 +1131,7 @@ schema = 1
 [formulas]
 dir = "formulas"
 
-[[agents]]
+[[agent]]
 name = "worker-b"
 `)
 	writeFile(t, dir, "packs/beta/formulas/mol-b.toml", "test")
@@ -1212,7 +1213,7 @@ func TestExpandPacks_OverrideInstallAgentHooks(t *testing.T) {
 name = "test"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "polecat"
 install_agent_hooks = ["claude"]
 `
@@ -1261,11 +1262,11 @@ name = "gastown"
 version = "1.0.0"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "mayor"
 prompt_template = "prompts/mayor.md"
 
-[[agents]]
+[[agent]]
 name = "deacon"
 `)
 	writeFile(t, dir, "packs/gastown/prompts/mayor.md", "you are the mayor")
@@ -1318,7 +1319,7 @@ schema = 1
 [formulas]
 dir = "formulas"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	writeFile(t, dir, "packs/gastown/formulas/mol-a.formula.toml", "test formula")
@@ -1366,7 +1367,7 @@ schema = 1
 [providers.codex]
 command = "codex"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 
@@ -1493,7 +1494,7 @@ schema = 1
 [formulas]
 dir = "formulas"
 
-[[agents]]
+[[agent]]
 name = "witness"
 `)
 	writeFile(t, dir, "packs/gt/formulas/mol-a.formula.toml", "test")
@@ -1523,7 +1524,7 @@ name = "gastown"
 version = "1.0.0"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "witness"
 `)
 
@@ -1551,7 +1552,7 @@ name = "gastown"
 version = "1.0.0"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "witness"
 session_setup_script = "scripts/setup.sh"
 `)
@@ -1581,7 +1582,7 @@ name = "gastown"
 version = "1.0.0"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 
@@ -1608,7 +1609,7 @@ name = "gastown"
 version = "1.0.0"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "witness"
 overlay_dir = "overlays/worker"
 `)
@@ -1640,13 +1641,13 @@ name = "combined"
 schema = 1
 city_agents = ["mayor", "deacon"]
 
-[[agents]]
+[[agent]]
 name = "mayor"
 
-[[agents]]
+[[agent]]
 name = "deacon"
 
-[[agents]]
+[[agent]]
 name = "witness"
 `)
 
@@ -1681,10 +1682,10 @@ name = "bad"
 schema = 1
 city_agents = ["mayor", "nonexistent"]
 
-[[agents]]
+[[agent]]
 name = "mayor"
 
-[[agents]]
+[[agent]]
 name = "witness"
 `)
 
@@ -1709,18 +1710,18 @@ name = "combined"
 schema = 1
 city_agents = ["mayor", "deacon"]
 
-[[agents]]
+[[agent]]
 name = "mayor"
 prompt_template = "prompts/mayor.md"
 
-[[agents]]
+[[agent]]
 name = "deacon"
 
-[[agents]]
+[[agent]]
 name = "witness"
 prompt_template = "prompts/witness.md"
 
-[[agents]]
+[[agent]]
 name = "polecat"
 `)
 
@@ -1760,17 +1761,17 @@ name = "combined"
 schema = 1
 city_agents = ["mayor", "deacon"]
 
-[[agents]]
+[[agent]]
 name = "mayor"
 
-[[agents]]
+[[agent]]
 name = "deacon"
 
-[[agents]]
+[[agent]]
 name = "witness"
 prompt_template = "prompts/witness.md"
 
-[[agents]]
+[[agent]]
 name = "polecat"
 `)
 
@@ -1811,10 +1812,10 @@ func TestExpandCityPackNoCityAgents(t *testing.T) {
 name = "simple"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "alpha"
 
-[[agents]]
+[[agent]]
 name = "beta"
 `)
 
@@ -1841,7 +1842,7 @@ func TestExpandPacks_DuplicateAgentCollision(t *testing.T) {
 name = "base"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "worker"
 `)
 	writeFile(t, dir, "packs/extras/pack.toml", `
@@ -1849,7 +1850,7 @@ name = "worker"
 name = "extras"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "worker"
 `)
 
@@ -1889,7 +1890,7 @@ func TestExpandCityPacks_DuplicateAgentCollision(t *testing.T) {
 name = "alpha"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "overseer"
 `)
 	writeFile(t, dir, "packs/beta/pack.toml", `
@@ -1897,7 +1898,7 @@ name = "overseer"
 name = "beta"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "overseer"
 `)
 
@@ -1934,7 +1935,7 @@ func TestExpandPacks_DifferentNamesNoCollision(t *testing.T) {
 name = "base"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "worker"
 `)
 	writeFile(t, dir, "packs/extras/pack.toml", `
@@ -1942,7 +1943,7 @@ name = "worker"
 name = "extras"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "reviewer"
 `)
 
@@ -1971,7 +1972,7 @@ func TestExpandPacks_SamePackDifferentRigsNoCollision(t *testing.T) {
 name = "shared"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "worker"
 `)
 
@@ -2004,7 +2005,7 @@ func TestPackIncludes(t *testing.T) {
 name = "maintenance"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "dog"
 `)
 
@@ -2015,7 +2016,7 @@ name = "gastown"
 schema = 1
 includes = ["../maintenance"]
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 
@@ -2050,7 +2051,7 @@ name = "maintenance"
 schema = 1
 city_agents = ["dog"]
 
-[[agents]]
+[[agent]]
 name = "dog"
 `)
 
@@ -2062,7 +2063,7 @@ schema = 1
 includes = ["../maintenance"]
 city_agents = ["mayor"]
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 
@@ -2103,7 +2104,7 @@ schema = 1
 [formulas]
 dir = "formulas"
 
-[[agents]]
+[[agent]]
 name = "dog"
 `)
 	writeFile(t, dir, "packs/maintenance/formulas/.keep", "")
@@ -2118,7 +2119,7 @@ includes = ["../maintenance"]
 [formulas]
 dir = "formulas"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	writeFile(t, dir, "packs/gastown/formulas/.keep", "")
@@ -2154,7 +2155,7 @@ name = "a"
 schema = 1
 includes = ["../b"]
 
-[[agents]]
+[[agent]]
 name = "alpha"
 `)
 	writeFile(t, dir, "packs/b/pack.toml", `
@@ -2163,7 +2164,7 @@ name = "b"
 schema = 1
 includes = ["../a"]
 
-[[agents]]
+[[agent]]
 name = "beta"
 `)
 
@@ -2189,7 +2190,7 @@ name = "main"
 schema = 1
 includes = ["../nonexistent"]
 
-[[agents]]
+[[agent]]
 name = "alpha"
 `)
 
@@ -2218,7 +2219,7 @@ schema = 1
 [providers.claude]
 command = "base-claude"
 
-[[agents]]
+[[agent]]
 name = "worker"
 `)
 
@@ -2232,7 +2233,7 @@ includes = ["../base"]
 [providers.claude]
 command = "main-claude"
 
-[[agents]]
+[[agent]]
 name = "boss"
 `)
 
@@ -2263,7 +2264,7 @@ city_agents = ["dog"]
 [formulas]
 dir = "formulas"
 
-[[agents]]
+[[agent]]
 name = "dog"
 `)
 	writeFile(t, dir, "packs/maintenance/formulas/.keep", "")
@@ -2279,10 +2280,10 @@ city_agents = ["mayor"]
 [formulas]
 dir = "formulas"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 
-[[agents]]
+[[agent]]
 name = "witness"
 `)
 	writeFile(t, dir, "packs/gastown/formulas/.keep", "")
@@ -2326,7 +2327,7 @@ func TestPackDirsCollected(t *testing.T) {
 name = "alpha"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "worker"
 prompt_template = "prompts/worker.md.tmpl"
 `)
@@ -2372,12 +2373,12 @@ func TestLoadPack_ScopeField(t *testing.T) {
 name = "test"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "mayor"
 scope = "city"
 prompt_template = "prompts/mayor.md"
 
-[[agents]]
+[[agent]]
 name = "polecat"
 scope = "rig"
 `)
@@ -2416,14 +2417,14 @@ name = "test"
 schema = 1
 city_agents = ["deacon"]
 
-[[agents]]
+[[agent]]
 name = "mayor"
 scope = "city"
 
-[[agents]]
+[[agent]]
 name = "deacon"
 
-[[agents]]
+[[agent]]
 name = "polecat"
 scope = "rig"
 `)
@@ -2459,7 +2460,7 @@ name = "test"
 schema = 1
 city_agents = ["polecat"]
 
-[[agents]]
+[[agent]]
 name = "polecat"
 scope = "rig"
 `)
@@ -2482,11 +2483,11 @@ func TestExpandCityPacks_ScopeFiltering(t *testing.T) {
 name = "test"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "mayor"
 scope = "city"
 
-[[agents]]
+[[agent]]
 name = "polecat"
 scope = "rig"
 `)
@@ -2518,11 +2519,11 @@ func TestExpandPacks_ScopeExcludesCity(t *testing.T) {
 name = "test"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "mayor"
 scope = "city"
 
-[[agents]]
+[[agent]]
 name = "polecat"
 scope = "rig"
 `)
@@ -2602,7 +2603,7 @@ func TestExpandCityPacks_ViaIncludes(t *testing.T) {
 name = "test"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 
@@ -2631,7 +2632,7 @@ func TestExpandPacks_ViaRigIncludes(t *testing.T) {
 name = "test"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "polecat"
 `)
 
@@ -2663,7 +2664,7 @@ func TestPackRequires_CitySatisfied(t *testing.T) {
 name = "provider"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "dog"
 scope = "city"
 `)
@@ -2678,7 +2679,7 @@ includes = ["../provider"]
 scope = "city"
 agent = "dog"
 
-[[agents]]
+[[agent]]
 name = "worker"
 scope = "city"
 `)
@@ -2711,7 +2712,7 @@ schema = 1
 scope = "city"
 agent = "dog"
 
-[[agents]]
+[[agent]]
 name = "worker"
 scope = "city"
 `)
@@ -2743,7 +2744,7 @@ func TestPackRequires_RigSatisfied(t *testing.T) {
 name = "provider"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "helper"
 scope = "rig"
 `)
@@ -2758,7 +2759,7 @@ includes = ["../provider"]
 scope = "rig"
 agent = "helper"
 
-[[agents]]
+[[agent]]
 name = "worker"
 scope = "rig"
 `)
@@ -2792,7 +2793,7 @@ schema = 1
 scope = "rig"
 agent = "helper"
 
-[[agents]]
+[[agent]]
 name = "worker"
 scope = "rig"
 `)
@@ -2880,7 +2881,7 @@ func TestFallbackAgent_NonFallbackWins(t *testing.T) {
 name = "maintenance"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "dog"
 scope = "city"
 nudge = "full dog"
@@ -2890,7 +2891,7 @@ nudge = "full dog"
 name = "dolt"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "dog"
 scope = "city"
 fallback = true
@@ -2931,7 +2932,7 @@ func TestFallbackAgent_BothFallback_FirstWins(t *testing.T) {
 name = "alpha"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "dog"
 scope = "city"
 fallback = true
@@ -2942,7 +2943,7 @@ nudge = "alpha dog"
 name = "beta"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "dog"
 scope = "city"
 fallback = true
@@ -2982,7 +2983,7 @@ func TestFallbackAgent_NeitherFallback_CollisionError(t *testing.T) {
 name = "alpha"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "dog"
 scope = "city"
 `)
@@ -2991,7 +2992,7 @@ scope = "city"
 name = "beta"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "dog"
 scope = "city"
 `)
@@ -3019,7 +3020,7 @@ func TestFallbackAgent_StandaloneWorks(t *testing.T) {
 name = "health"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "dog"
 scope = "city"
 fallback = true
@@ -3053,7 +3054,7 @@ func TestExpandPacks_OverrideAppendAlone(t *testing.T) {
 name = "test"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "polecat"
 pre_start = ["base-setup.sh"]
 session_setup = ["tmux set status"]
@@ -3101,7 +3102,7 @@ func TestExpandPacks_OverrideReplacePlusAppend(t *testing.T) {
 name = "test"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "polecat"
 pre_start = ["old-a.sh", "old-b.sh"]
 `)
@@ -3131,7 +3132,7 @@ func TestExpandPacks_OverrideAppendToEmptyBase(t *testing.T) {
 name = "test"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "polecat"
 `)
 	cfg := &City{
@@ -3166,7 +3167,7 @@ func TestPackLevelPatches_Agent(t *testing.T) {
 name = "base"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "worker"
 nudge = "do work"
 `)
@@ -3177,7 +3178,7 @@ name = "overlay"
 schema = 1
 includes = ["../base"]
 
-[[patches.agents]]
+[[patches.agent]]
 name = "worker"
 session_setup_script = "scripts/theme.sh"
 `)
@@ -3217,7 +3218,7 @@ func TestPackLevelPatches_PathResolution(t *testing.T) {
 name = "base"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "agent1"
 `)
 	// Overlay with relative script path — should resolve to overlay dir.
@@ -3227,7 +3228,7 @@ name = "overlay"
 schema = 1
 includes = ["../base"]
 
-[[patches.agents]]
+[[patches.agent]]
 name = "agent1"
 session_setup_script = "scripts/neon.sh"
 prompt_template = "prompts/custom.md"
@@ -3264,7 +3265,7 @@ func TestPackLevelPatches_NotFound(t *testing.T) {
 name = "base"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "worker"
 `)
 	// Patch targets nonexistent agent.
@@ -3274,7 +3275,7 @@ name = "overlay"
 schema = 1
 includes = ["../base"]
 
-[[patches.agents]]
+[[patches.agent]]
 name = "ghost"
 nudge = "boo"
 `)
@@ -3301,7 +3302,7 @@ func TestPackLevelPatches_AppendFields(t *testing.T) {
 name = "base"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "worker"
 session_setup = ["tmux set status on"]
 pre_start = ["init.sh"]
@@ -3313,7 +3314,7 @@ name = "overlay"
 schema = 1
 includes = ["../base"]
 
-[[patches.agents]]
+[[patches.agent]]
 name = "worker"
 session_setup_append = ["tmux set mouse on"]
 pre_start_append = ["extra.sh"]
@@ -3353,7 +3354,7 @@ description = "Verify required binaries"
 name = "check-config"
 script = "doctor/check-config.sh"
 
-[[agents]]
+[[agent]]
 name = "worker"
 `)
 
@@ -3413,7 +3414,7 @@ func TestPackDoctorEntriesNoDoctorSection(t *testing.T) {
 name = "bare"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "worker"
 `)
 
@@ -3488,7 +3489,7 @@ func TestExpandCityPacks_OverlayDirs(t *testing.T) {
 name = "skills"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "worker"
 `)
 	// Create overlay/ directory in the pack.
@@ -3521,7 +3522,7 @@ func TestExpandCityPacks_NoOverlayDir(t *testing.T) {
 name = "bare"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "worker"
 `)
 	cfg := &City{
@@ -3579,7 +3580,7 @@ func TestExpandPacks_RigOverlayDirs(t *testing.T) {
 name = "rig-skills"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "coder"
 `)
 	if err := os.MkdirAll(filepath.Join(dir, "packs/rig-skills/overlay"), 0o755); err != nil {
@@ -3617,7 +3618,7 @@ func TestExpandPacks_RigNoOverlayDir(t *testing.T) {
 name = "bare"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "worker"
 `)
 
@@ -3726,7 +3727,7 @@ schema = 1
 [global]
 session_live = ["echo rig theme"]
 
-[[agents]]
+[[agent]]
 name = "worker"
 `)
 	cfg := &City{
@@ -3865,12 +3866,12 @@ func TestPackGlobal_OrderingAfterPatches(t *testing.T) {
 name = "full"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "worker"
 session_live = ["echo own"]
 
 [patches]
-[[patches.agents]]
+[[patches.agent]]
 name = "worker"
 session_live_append = ["echo patched"]
 
@@ -3908,10 +3909,10 @@ func TestPackDefinesAgent_Found(t *testing.T) {
 name = "gastown"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "polecat"
 
-[[agents]]
+[[agent]]
 name = "refinery"
 `)
 	fs := fsys.OSFS{}
@@ -3930,7 +3931,7 @@ func TestPackDefinesAgent_NotFound(t *testing.T) {
 name = "gastown"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "refinery"
 `)
 	fs := fsys.OSFS{}
@@ -3946,7 +3947,7 @@ func TestPackDefinesAgent_RecursiveIncludes(t *testing.T) {
 name = "base"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "polecat"
 `)
 	writeFile(t, dir, "packs/gastown/pack.toml", `
@@ -3955,7 +3956,7 @@ name = "gastown"
 schema = 1
 includes = ["../base"]
 
-[[agents]]
+[[agent]]
 name = "refinery"
 `)
 	fs := fsys.OSFS{}
@@ -3973,10 +3974,10 @@ name = "gastown"
 schema = 1
 city_agents = ["mayor"]
 
-[[agents]]
+[[agent]]
 name = "mayor"
 
-[[agents]]
+[[agent]]
 name = "polecat"
 `)
 	fs := fsys.OSFS{}
@@ -4006,10 +4007,10 @@ name = "mypack"
 version = "1.0.0"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "db"
 
-[[agents]]
+[[agent]]
 name = "worker"
 depends_on = ["db"]
 `)

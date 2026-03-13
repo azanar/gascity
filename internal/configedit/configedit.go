@@ -22,7 +22,7 @@ const (
 	// (or a merged fragment) and can be edited in place.
 	OriginInline Origin = iota
 	// OriginDerived means the resource comes from pack expansion and
-	// must be modified via [[patches.agents]] or [[patches.rigs]].
+	// must be modified via [[patches.agent]] or [[patches.rigs]].
 	OriginDerived
 	// OriginNotFound means the resource was not found in any config.
 	OriginNotFound
@@ -179,7 +179,7 @@ func SetRigSuspended(cfg *config.City, name string, suspended bool) error {
 }
 
 // AddOrUpdateAgentPatch adds or updates an agent patch in the config's
-// [[patches.agents]] section. If a patch for the given agent already
+// [[patches.agent]] section. If a patch for the given agent already
 // exists, fn is called on it. Otherwise a new patch is created.
 func AddOrUpdateAgentPatch(cfg *config.City, name string, fn func(p *config.AgentPatch)) error {
 	dir, base := config.ParseQualifiedName(name)
@@ -513,7 +513,7 @@ func (e *Editor) DeleteProvider(name string) error {
 
 // --- Patch resource mutations ---
 
-// SetAgentPatch creates or replaces an agent patch in [[patches.agents]].
+// SetAgentPatch creates or replaces an agent patch in [[patches.agent]].
 func (e *Editor) SetAgentPatch(patch config.AgentPatch) error {
 	return e.Edit(func(cfg *config.City) error {
 		if patch.Name == "" {
@@ -530,7 +530,7 @@ func (e *Editor) SetAgentPatch(patch config.AgentPatch) error {
 	})
 }
 
-// DeleteAgentPatch removes an agent patch from [[patches.agents]].
+// DeleteAgentPatch removes an agent patch from [[patches.agent]].
 func (e *Editor) DeleteAgentPatch(name string) error {
 	return e.Edit(func(cfg *config.City) error {
 		dir, base := config.ParseQualifiedName(name)

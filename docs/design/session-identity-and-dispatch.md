@@ -73,7 +73,7 @@ interpret.
 
 ### Reconciler auto-creates config sessions
 
-When the reconciler sees `[[agents]] name = "overseer"` and no open bead
+When the reconciler sees `[[agent]] name = "overseer"` and no open bead
 with `template=overseer` exists, it creates one. The bead gets an ID
 (e.g., `gc-1`), the session name becomes `s-gc-1`, and the reconciler
 starts the process.
@@ -327,7 +327,7 @@ func buildDesiredState(...) map[string]TemplateParams {
     desired := map[string]TemplateParams{}
 
     // Step 1: Config-driven entries (as today).
-    // For each [[agents]] entry, ensure at least one session bead exists.
+    // For each [[agent]] entry, ensure at least one session bead exists.
     // If no bead with this template exists, create one (auto-create).
     for _, agent := range cfg.Agents {
         beads := findOpenBeadsByTemplate(store, agent.QualifiedName())

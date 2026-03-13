@@ -60,11 +60,11 @@ schema = 1
 includes = ["../helper"]
 city_agents = ["mayor", "dog"]
 
-[[agents]]
+[[agent]]
 name = "mayor"
 start_command = "echo hello"
 
-[[agents]]
+[[agent]]
 name = "witness"
 
 -- testcity/packs/helper/pack.toml --
@@ -73,10 +73,10 @@ name = "helper"
 schema = 1
 city_agents = ["dog"]
 
-[[agents]]
+[[agent]]
 name = "dog"
 start_command = "echo hello"
-[agents.pool]
+[agent.pool]
 min = 0
 max = 3
 check = "echo 0"

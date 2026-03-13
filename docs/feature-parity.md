@@ -130,7 +130,7 @@ become role-agnostic infrastructure that any pack can use.
 
 | Gastown | Gas City | Status | Notes |
 |---------|----------|--------|-------|
-| `gt crew add/remove` | Config-driven | **REMAP** | Add `[[agents]]` to city.toml |
+| `gt crew add/remove` | Config-driven | **REMAP** | Add `[[agent]]` to city.toml |
 | `gt crew list` | `gc session list` | **DONE** | |
 | `gt crew start/stop` | Reconciler / `gc agent suspend+resume` | **REMAP** | No individual start/stop; reconciler auto-starts, suspend prevents restart |
 | `gt crew restart` | `gc session kill` (reconciler restarts) | **DONE** | |

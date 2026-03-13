@@ -174,9 +174,9 @@ Capabilities activate based on config section presence:
 
 | Level | Config Required | Adds |
 |---|---|---|
-| 0-1 | `[workspace]` + `[[agents]]` | Agent + tasks |
+| 0-1 | `[workspace]` + `[[agent]]` | Agent + tasks |
 | 2 | `[daemon]` | Task loop (controller) |
-| 3 | `[[agents]]` with `[agents.pool]` | Multiple agents + pool |
+| 3 | `[[agent]]` with `[agent.pool]` | Multiple agents + pool |
 | 4 | `[mail]` | Messaging |
 | 5 | Formula files + `[formulas]` | Formulas & molecules |
 | 6 | `[daemon]` health fields | Health monitoring |

@@ -173,7 +173,7 @@ func writeCityTOML(t *testing.T, dir string, cityName string, agentNames ...stri
 	var buf bytes.Buffer
 	buf.WriteString("[workspace]\nname = " + `"` + cityName + `"` + "\n\n")
 	for _, name := range agentNames {
-		buf.WriteString("[[agents]]\nname = " + `"` + name + `"` + "\n")
+		buf.WriteString("[[agent]]\nname = " + `"` + name + `"` + "\n")
 		buf.WriteString("start_command = \"echo hello\"\n\n")
 	}
 	if err := os.WriteFile(tomlPath, buf.Bytes(), 0o644); err != nil {

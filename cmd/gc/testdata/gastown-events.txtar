@@ -94,6 +94,6 @@ stdout 'deploy.started'
 [workspace]
 name = "bright-lights"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 start_command = "echo hello"

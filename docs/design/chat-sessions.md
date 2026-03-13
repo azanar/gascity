@@ -136,7 +136,7 @@ $ gc session new helper --title "auth system debugging"
 
 ### Configuration
 
-No new config section is required to use sessions. Any `[[agents]]`
+No new config section is required to use sessions. Any `[[agent]]`
 entry works as a template. The optional `[sessions]` section controls
 auto-suspend:
 

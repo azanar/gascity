@@ -27,7 +27,7 @@ name = "` + name + `"
 version = "1.0.0"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "worker"
 `
 	if err := os.MkdirAll(filepath.Join(workDir, "prompts"), 0o755); err != nil {
@@ -61,7 +61,7 @@ name = "` + name + `"
 version = "` + tag + `"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "worker"
 `
 	if err := os.WriteFile(filepath.Join(workDir, "pack.toml"), []byte(topoContent), 0o644); err != nil {
@@ -561,7 +561,7 @@ name = "parent"
 schema = 1
 includes = ["` + cacheDir + `"]
 
-[[agents]]
+[[agent]]
 name = "boss"
 `
 	topoDir := filepath.Join(cityRoot, "packs", "parent")

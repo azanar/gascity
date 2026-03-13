@@ -7,7 +7,7 @@ import "fmt"
 // after fragment merge, before validation.
 type Patches struct {
 	// Agents targets agents by (dir, name).
-	Agents []AgentPatch `toml:"agents,omitempty"`
+	Agents []AgentPatch `toml:"agent,omitempty"`
 	// Rigs targets rigs by name.
 	Rigs []RigPatch `toml:"rigs,omitempty"`
 	// Providers targets providers by name.
@@ -149,7 +149,7 @@ func (p *Patches) IsEmpty() bool {
 func ApplyPatches(cfg *City, patches Patches) error {
 	for i, p := range patches.Agents {
 		if err := applyAgentPatch(cfg, &p); err != nil {
-			return fmt.Errorf("patches.agents[%d]: %w", i, err)
+			return fmt.Errorf("patches.agent[%d]: %w", i, err)
 		}
 	}
 	for i, p := range patches.Rigs {

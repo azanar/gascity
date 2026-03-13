@@ -363,15 +363,15 @@ include = ["prod.toml"]
 [workspace]
 name = "test"
 
-[[agents]]
+[[agent]]
 name = "polecat"
 dir = "hw"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	fs.Files["/city/prod.toml"] = []byte(`
-[[patches.agents]]
+[[patches.agent]]
 dir = "hw"
 name = "polecat"
 suspended = true
@@ -400,12 +400,12 @@ include = ["agents.toml"]
 [workspace]
 name = "test"
 
-[[patches.agents]]
+[[patches.agent]]
 name = "worker"
 suspended = true
 `)
 	fs.Files["/city/agents.toml"] = []byte(`
-[[agents]]
+[[agent]]
 name = "worker"
 `)
 	cfg, _, err := LoadWithIncludes(fs, "/city/city.toml")
@@ -427,10 +427,10 @@ func TestLoadWithIncludes_PatchTargetMissing(t *testing.T) {
 [workspace]
 name = "test"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 
-[[patches.agents]]
+[[patches.agent]]
 dir = "hw"
 name = "ghost"
 suspended = true

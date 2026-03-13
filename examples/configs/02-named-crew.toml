@@ -7,11 +7,11 @@
 [workspace]
 name = "my-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 prompt_template = ".gc/prompts/mayor.md"
 
-[[agents]]
+[[agent]]
 name = "worker"
 prompt_template = ".gc/prompts/worker.md"
 

@@ -22,7 +22,7 @@ const currentPackSchema = 1
 // It has a [pack] metadata header and agent definitions.
 type packConfig struct {
 	Pack      PackMeta                `toml:"pack"`
-	Agents    []Agent                 `toml:"agents"`
+	Agents    []Agent                 `toml:"agent"`
 	Providers map[string]ProviderSpec `toml:"providers,omitempty"`
 	Formulas  FormulasConfig          `toml:"formulas,omitempty"`
 	Patches   Patches                 `toml:"patches,omitempty"`
@@ -692,7 +692,7 @@ func applyPackAgentPatches(agents []Agent, patches []AgentPatch) error {
 			}
 		}
 		if !found {
-			return fmt.Errorf("patches.agents[%d]: agent %q not found in pack", i, target)
+			return fmt.Errorf("patches.agent[%d]: agent %q not found in pack", i, target)
 		}
 	}
 	return nil

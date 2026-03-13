@@ -60,7 +60,7 @@ stdout 'Rigs in'
 [workspace]
 name = "cmd-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 start_command = "echo hello"
 -- empty-city/.gc/.keep --
@@ -69,5 +69,5 @@ start_command = "echo hello"
 [workspace]
 name = "empty-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"

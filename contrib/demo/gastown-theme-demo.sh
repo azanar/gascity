@@ -58,11 +58,11 @@ args = ["3600"]
 prompt_mode = "none"
 
 # City-scoped agents
-[[agents]]
+[[agent]]
 name = "mayor"
 provider = "shell"
 
-[[agents]]
+[[agent]]
 name = "deacon"
 provider = "shell"
 
@@ -71,12 +71,12 @@ provider = "shell"
 name = "demo-rig"
 path = "$DEMO_RIG_ABS"
 
-[[agents]]
+[[agent]]
 name = "witness"
 dir = "demo-rig"
 provider = "shell"
 
-[[agents]]
+[[agent]]
 name = "polecat-1"
 dir = "demo-rig"
 provider = "shell"

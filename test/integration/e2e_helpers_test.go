@@ -137,9 +137,9 @@ func writeE2EToml(t *testing.T, cityDir string, city e2eCity) {
 		}
 	}
 
-	// [[agents]]
+	// [[agent]]
 	for _, a := range city.Agents {
-		fmt.Fprintf(&b, "\n[[agents]]\nname = %s\n", quote(a.Name))
+		fmt.Fprintf(&b, "\n[[agent]]\nname = %s\n", quote(a.Name))
 		if a.StartCommand != "" {
 			fmt.Fprintf(&b, "start_command = %s\n", quote(a.StartCommand))
 		}
@@ -153,7 +153,7 @@ func writeE2EToml(t *testing.T, cityDir string, city e2eCity) {
 			fmt.Fprintf(&b, "prompt_template = %s\n", quote(a.PromptTemplate))
 		}
 		if len(a.Env) > 0 {
-			b.WriteString("\n[agents.env]\n")
+			b.WriteString("\n[agent.env]\n")
 			for k, v := range a.Env {
 				fmt.Fprintf(&b, "%s = %s\n", k, quote(v))
 			}
@@ -177,7 +177,7 @@ func writeE2EToml(t *testing.T, cityDir string, city e2eCity) {
 			fmt.Fprintf(&b, "nudge = %s\n", quote(a.Nudge))
 		}
 		if a.Pool != nil {
-			fmt.Fprintf(&b, "\n[agents.pool]\nmin = %d\nmax = %d\n", a.Pool.Min, a.Pool.Max)
+			fmt.Fprintf(&b, "\n[agent.pool]\nmin = %d\nmax = %d\n", a.Pool.Min, a.Pool.Max)
 			if a.Pool.Check != "" {
 				fmt.Fprintf(&b, "check = %s\n", quote(a.Pool.Check))
 			}

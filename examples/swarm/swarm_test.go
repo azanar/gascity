@@ -71,7 +71,7 @@ func TestPromptFilesExist(t *testing.T) {
 // packFileConfig mirrors the pack.toml structure for test parsing.
 type packFileConfig struct {
 	Pack   config.PackMeta `toml:"pack"`
-	Agents []config.Agent  `toml:"agents"`
+	Agents []config.Agent  `toml:"agent"`
 }
 
 func TestCombinedPackParses(t *testing.T) {

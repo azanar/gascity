@@ -71,11 +71,11 @@ exec gc stop $WORK/multi-pool-city
 [workspace]
 name = "polecat-city"
 
-[[agents]]
+[[agent]]
 name = "polecat"
 start_command = "echo hello"
 dir = "myproject"
-[agents.pool]
+[agent.pool]
 min = 0
 max = 5
 check = "echo 2"
@@ -86,10 +86,10 @@ check = "echo 2"
 [workspace]
 name = "clamped-city"
 
-[[agents]]
+[[agent]]
 name = "worker"
 start_command = "echo hello"
-[agents.pool]
+[agent.pool]
 min = 0
 max = 3
 check = "echo 100"
@@ -100,10 +100,10 @@ check = "echo 100"
 [workspace]
 name = "min-pool-city"
 
-[[agents]]
+[[agent]]
 name = "builder"
 start_command = "echo hello"
-[agents.pool]
+[agent.pool]
 min = 2
 max = 10
 check = "echo 0"
@@ -114,14 +114,14 @@ check = "echo 0"
 [workspace]
 name = "dog-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 start_command = "echo hello"
 
-[[agents]]
+[[agent]]
 name = "dog"
 start_command = "echo hello"
-[agents.pool]
+[agent.pool]
 min = 0
 max = 3
 check = "echo 0"
@@ -132,22 +132,22 @@ check = "echo 0"
 [workspace]
 name = "multi-pool-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 start_command = "echo hello"
 
-[[agents]]
+[[agent]]
 name = "polecat"
 start_command = "echo hello"
-[agents.pool]
+[agent.pool]
 min = 0
 max = 5
 check = "echo 1"
 
-[[agents]]
+[[agent]]
 name = "dog"
 start_command = "echo hello"
-[agents.pool]
+[agent.pool]
 min = 0
 max = 3
 check = "echo 1"

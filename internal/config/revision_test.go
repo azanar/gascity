@@ -55,7 +55,7 @@ func TestRevision_IncludesFragments(t *testing.T) {
 	writeFile(t, dir, "city.toml", `[workspace]
 name = "test"
 `)
-	writeFile(t, dir, "agents.toml", `[[agents]]
+	writeFile(t, dir, "agents.toml", `[[agent]]
 name = "mayor"
 `)
 
@@ -69,7 +69,7 @@ name = "mayor"
 	h1 := Revision(fsys.OSFS{}, prov, &City{}, dir)
 
 	// Change fragment.
-	writeFile(t, dir, "agents.toml", `[[agents]]
+	writeFile(t, dir, "agents.toml", `[[agent]]
 name = "worker"
 `)
 
@@ -113,7 +113,7 @@ func TestRevision_IncludesCityPack(t *testing.T) {
 	writeFile(t, dir, "city.toml", `[workspace]
 name = "test"
 `)
-	writeFile(t, dir, "packs/shared/agents.toml", `[[agents]]
+	writeFile(t, dir, "packs/shared/agents.toml", `[[agent]]
 name = "worker"
 `)
 
@@ -124,7 +124,7 @@ name = "worker"
 
 	h1 := Revision(fsys.OSFS{}, prov, cfg, dir)
 
-	writeFile(t, dir, "packs/shared/agents.toml", `[[agents]]
+	writeFile(t, dir, "packs/shared/agents.toml", `[[agent]]
 name = "worker-v2"
 `)
 

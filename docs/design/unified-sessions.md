@@ -11,7 +11,7 @@
 ## Summary
 
 Unify Gas City's two independent agent lifecycle systems — config-driven
-`[[agents]]` managed by the reconciler, and on-demand sessions managed via
+`[[agent]]` managed by the reconciler, and on-demand sessions managed via
 CLI/API — into a single primitive: the **session**. Every agent instance
 becomes a session backed by a bead. Sessions don't have restart policies;
 they have **wake reasons**. The reconciler becomes a simple loop: "does
@@ -24,7 +24,7 @@ ephemeral, the work is permanent.
 
 Today Gas City has two parallel systems for managing agent processes:
 
-**System 1: Config agents** (`[[agents]]` in city.toml)
+**System 1: Config agents** (`[[agent]]` in city.toml)
 - Reconciler starts them at boot, restarts on crash, stops orphans
 - Config fingerprinting detects drift -> drain-then-restart
 - Crash-loop backoff, idle timeout, pool scaling
@@ -84,7 +84,7 @@ Config agents in city.toml become session templates with a standing wake
 reason:
 
 ```toml
-[[agents]]
+[[agent]]
 name = "overseer"
 provider = "claude"
 prompt_template = "prompts/overseer.md"
@@ -96,7 +96,7 @@ Interactive sessions are created on demand:
 
 ```bash
 $ gc session new claude --title "debugging auth"
-# Uses provider preset "claude" (no matching [[agents]] entry).
+# Uses provider preset "claude" (no matching [[agent]] entry).
 # Session created, tmux attached.
 # When you detach + go idle, the session sleeps.
 # Work persists in the bead. Resume anytime:
@@ -139,7 +139,7 @@ for each session bead:
 ```
 
 Wake reasons are:
-- **Config presence** — `[[agents]]` entry exists in city.toml
+- **Config presence** — `[[agent]]` entry exists in city.toml
   (pool instances: slot within desired count)
 - **User attached** — terminal connected to session
   (providers that support it)
@@ -148,7 +148,7 @@ Wake reasons are:
 Sleep triggers are:
 - **Idle timeout** — no I/O activity for configured duration
 - **Explicit suspend** — user ran `gc session sleep` (sets user hold)
-- **Config removal** — `[[agents]]` entry removed from city.toml
+- **Config removal** — `[[agent]]` entry removed from city.toml
 - **Work complete** — all hooked beads closed, no other wake reason
 
 ### User hold (explicit sleep override)
@@ -212,13 +212,13 @@ $ gc session attach gc-42
 Pools still work, but pool instances are sessions:
 
 ```toml
-[[agents]]
+[[agent]]
 name = "worker"
 provider = "claude"
 prompt_template = "prompts/worker.md"
 wake_mode = "fresh"        # "resume" (default) | "fresh"
 
-[agents.pool]
+[agent.pool]
 min = 1
 max = 5
 check = "bd ready --label=role:worker --json | jq length"
@@ -426,7 +426,7 @@ healing pass.
 type WakeReason string
 
 const (
-    WakeConfig   WakeReason = "config"    // [[agents]] entry exists (per-instance for pools)
+    WakeConfig   WakeReason = "config"    // [[agent]] entry exists (per-instance for pools)
     WakeAttached WakeReason = "attached"  // user terminal connected
     WakeWork     WakeReason = "work"      // has hooked/open beads
 )
@@ -1104,7 +1104,7 @@ Wall-clock budget per tick: 5s (configurable) — defer remaining to next tick
 
 10. **Session provenance is dynamic.** Whether a session is config-managed
     or provider-preset is determined by `cfg.FindAgent(template)` each tick,
-    not by a stored flag. Adding an `[[agents]]` entry makes a matching
+    not by a stored flag. Adding an `[[agent]]` entry makes a matching
     session config-managed (gains `WakeConfig`, Phase 1a sync); removing
     it makes the session provider-preset (loses `WakeConfig`, always
     resumes). This is intentional: the unified model means config is the
@@ -1149,18 +1149,18 @@ ordering:
 <!-- REVIEW: added per Major 1 — concrete depends_on TOML example -->
 
 ```toml
-[[agents]]
+[[agent]]
 name = "database"
 provider = "claude"
 prompt_template = "prompts/database.md"
 
-[[agents]]
+[[agent]]
 name = "api-server"
 provider = "claude"
 prompt_template = "prompts/api-server.md"
 depends_on = ["database"]
 
-[[agents]]
+[[agent]]
 name = "frontend"
 provider = "claude"
 prompt_template = "prompts/frontend.md"
@@ -1171,7 +1171,7 @@ depends_on = ["api-server"]
 ```
 
 **Validation rules for `depends_on`:**
-1. All targets must reference existing `[[agents]]` entries (no dangling refs).
+1. All targets must reference existing `[[agent]]` entries (no dangling refs).
 2. No cycles — validated via topological sort at config load time.
 3. Self-references are rejected.
 4. Pool templates can depend on non-pool templates (and vice versa).
@@ -1180,7 +1180,7 @@ depends_on = ["api-server"]
 **Cycle and dangling reference detection:** `depends_on` is validated at
 config load time by `config.Validate()`. Cycles are rejected with a
 clear error naming the cycle members. Dangling references (dependency
-targets not in `[[agents]]`) are also rejected. If an invalid graph reaches the reconciler despite
+targets not in `[[agent]]`) are also rejected. If an invalid graph reaches the reconciler despite
 validation (e.g., hot-reloaded config), it falls back to unordered
 processing and emits a `ConfigValidationError` event.
 
@@ -1221,9 +1221,9 @@ to prevent thundering herd.
 
 ### Config agent lifecycle
 
-A config `[[agents]]` entry creates a session bead on first reconciler
+A config `[[agent]]` entry creates a session bead on first reconciler
 tick if one doesn't exist. The bead persists across controller restarts.
-The `[[agents]]` entry is a **standing wake reason**, not a session
+The `[[agent]]` entry is a **standing wake reason**, not a session
 definition.
 
 **Adding an agent to city.toml:**
@@ -1277,11 +1277,11 @@ templates are qualified by rig path:
 
 ```toml
 # Single rig — bare names work:
-[[agents]]
+[[agent]]
 name = "worker"
 
 # Multi-rig — qualified names resolve ambiguity:
-[[agents]]
+[[agent]]
 name = "frontend/worker"    # worker template from the "frontend" rig
 ```
 
@@ -2191,16 +2191,16 @@ chars, no control characters). Rejects writes to `template`, `provider`,
 <!-- REVIEW: updated per Blocker 6 — immutable fields listed -->
 
 **`POST /v0/session/new`** accepted fields and validation:
-- `template` (required): must match an existing `[[agents]]` entry or a
+- `template` (required): must match an existing `[[agent]]` entry or a
   registered provider preset. Validated against config.
 - `title` (optional): string, max 200 chars, no control characters.
 - `work_dir` (optional): validated by `validateWorkDir()` — must be
   canonical, must exist, must be a directory. Defaults to city root.
 - `provider`, `command`, `session_key`, and all other fields: rejected.
   These are derived from the template at wake time.
-- `wake_mode`: set from the matching `[[agents]]` config entry if one
+- `wake_mode`: set from the matching `[[agent]]` config entry if one
   exists (inherits the config's `wake_mode`); defaults to `"resume"` for
-  provider-preset sessions (those not matching any `[[agents]]` entry).
+  provider-preset sessions (those not matching any `[[agent]]` entry).
   Template-derived sessions that match a config entry behave as
   config-managed sessions: they receive `WakeConfig`, participate in
   Phase 1a sync, and inherit `wake_mode` from config.
@@ -2333,7 +2333,7 @@ The session-as-bead pattern composes from existing primitives:
   lifecycle
 - **Task Store** (Layer 0) -> beads store session identity and state
 - **Event Bus** (Layer 1) -> wake signals propagated via events
-- **Config** (Layer 0) -> `[[agents]]` provides standing wake reasons
+- **Config** (Layer 0) -> `[[agent]]` provides standing wake reasons
 
 No new primitive is introduced.
 
@@ -2419,7 +2419,7 @@ persistent, resumable, work-receiving agent instances.
 
 ## Resolved Questions
 
-1. **Should `[[agents]]` config key change?** No. Keep `[[agents]]`.
+1. **Should `[[agent]]` config key change?** No. Keep `[[agent]]`.
 
 2. ~~**Crash backoff.**~~ **Resolved.** Added crash-loop dampening with
    quarantine and rapid-exit detection. See
@@ -2670,7 +2670,7 @@ The existing reconciler behavior is unchanged in Phase 1. Bead creation
 is additive and write-only — a side effect alongside the current
 lifecycle management. Phase 2 switches to the new reconciler.
 
-- Create session bead for each `[[agents]]` entry if not exists
+- Create session bead for each `[[agent]]` entry if not exists
 - Store config hash, live hash, session name in bead metadata
 - Rerunnable adoption barrier with permissive out-of-bounds slot handling
 - Add `generation` counter, `instance_token`, `gc_bead_store_healthy` metric

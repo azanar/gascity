@@ -273,10 +273,10 @@ cat >> "$DEMO_CITY/city.toml" <<EOF
 # ── STEP 3: Change "swarm-lifecycle" → "lifecycle" above ─────────────────
 
 # ── Uncomment after Step 3 (lifecycle pack defines the polecat agent) ──
-# [[patches.agents]]
+# [[patches.agent]]
 # dir = ""
 # name = "polecat"
-# [patches.agents.env]
+# [patches.agent.env]
 # DOLTHUB_TOKEN = "\$DOLTHUB_TOKEN"
 EOF
 

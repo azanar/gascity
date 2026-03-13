@@ -23,7 +23,7 @@ without forking.
 
 - **Progressive Activation**: Capabilities emerge from config section
   presence. An empty `city.toml` with just `[workspace]` and
-  `[[agents]]` gives Level 0-1 (agent + tasks). Adding `[daemon]`
+  `[[agent]]` gives Level 0-1 (agent + tasks). Adding `[daemon]`
   activates health monitoring. Adding `[[rigs]]` with packs
   activates formulas and automations. No feature flags -- the config IS
   the feature flag.
@@ -260,7 +260,7 @@ Minimal example (Level 0-1):
 [workspace]
 name = "my-city"
 
-[[agents]]
+[[agent]]
 name = "worker"
 prompt_template = "prompts/worker.md"
 ```
@@ -287,7 +287,7 @@ pack = "shared"
 agent = "worker"
 suspended = true
 
-[patches.agents]
+[patches.agent]
 dir = ""
 name = "overseer"
 idle_timeout = "30m"

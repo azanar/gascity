@@ -62,11 +62,11 @@ stderr 'not found'
 [workspace]
 name = "bright-lights"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 start_command = "echo hello"
 
-[[agents]]
+[[agent]]
 name = "builder"
 dir = "hello-world"
 suspended = true

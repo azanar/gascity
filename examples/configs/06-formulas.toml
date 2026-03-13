@@ -12,11 +12,11 @@ provider = "claude"
 [formulas]
 dir = ".gc/formulas"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 prompt_template = ".gc/prompts/mayor.md"
 
-[[agents]]
+[[agent]]
 name = "worker"
 prompt_template = ".gc/prompts/worker.md"
 

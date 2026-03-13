@@ -37,6 +37,6 @@ name = "ctrl-city"
 [daemon]
 patrol_interval = "100ms"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 start_command = "echo hello"

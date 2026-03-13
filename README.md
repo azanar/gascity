@@ -16,7 +16,7 @@ Gas City is an **orchestration-builder SDK** for multi-agent AI systems. It give
 [workspace]
 name = "my-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 prompt_template = "prompts/mayor.md"
 
@@ -64,7 +64,7 @@ Each layer is an independent project with independent ownership:
 [workspace]
 name = "my-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 prompt_template = "prompts/mayor.md"
 
@@ -80,11 +80,11 @@ Create a bead with `bd create "Fix the login bug"`. The mayor claims it, works i
 # Workers scale based on queue depth.
 # check returns desired count, clamped to [min, max].
 
-[[agents]]
+[[agent]]
 name = "worker"
 prompt_template = "prompts/pool-worker.md"
 
-[agents.pool]
+[agent.pool]
 min = 0
 max = 5
 check = "bd ready --unassigned --limit 0 --json | jq length"
@@ -117,12 +117,12 @@ Two lines changed. Same agents, same prompts, same formulas, same work tracking.
 ```toml
 # Each rig gets its own .beads/ database, its own prefix, its own agents.
 
-[[agents]]
+[[agent]]
 name = "fe-worker"
 dir = "projects/frontend"
 prompt_template = "prompts/scoped-worker.md"
 
-[[agents]]
+[[agent]]
 name = "be-worker"
 dir = "projects/backend"
 prompt_template = "prompts/scoped-worker.md"
@@ -317,11 +317,11 @@ Each primitive has pluggable backends:
 Agents can be fixed (always one running) or elastic (scale between min and max based on a check command):
 
 ```toml
-[[agents]]
+[[agent]]
 name = "worker"
 prompt_template = "prompts/pool-worker.md"
 
-[agents.pool]
+[agent.pool]
 min = 0
 max = 5
 check = "bd ready --unassigned --limit 0 --json | jq length"
@@ -339,7 +339,7 @@ Gas City's health patrol follows the Erlang/OTP supervision model:
 |---|---|
 | Supervisor | Controller / Health Patrol |
 | Worker | Agent (any role) |
-| Child spec | `[[agents]]` with health config |
+| Child spec | `[[agent]]` with health config |
 | one_for_one restart | Restart dead agent only |
 | max_restarts / max_seconds | `max_restarts_per_window` / `restart_window` |
 | Links (death propagates) | `depends_on` (shutdown sequencing) |
@@ -374,20 +374,20 @@ name = "gastown"
 version = "1.0.0"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "witness"
 prompt_template = "prompts/witness.md.tmpl"
 
-[[agents]]
+[[agent]]
 name = "refinery"
 isolation = "worktree"
 prompt_template = "prompts/refinery.md.tmpl"
 
-[[agents]]
+[[agent]]
 name = "polecat"
 isolation = "worktree"
 prompt_template = "prompts/polecat.md.tmpl"
-[agents.pool]
+[agent.pool]
 min = 0
 max = 3
 ```
@@ -446,9 +446,9 @@ Capabilities activate based on which config sections are present. Each level is 
 
 | Level | Config adds | What you get |
 |-------|------------|-------------|
-| 0-1 | `[workspace]` + `[[agents]]` + `[beads]` | One agent doing work with tracked beads |
-| 2 | `[agents.loop]` | Agent continuously polls for ready beads, clean context per task |
-| 3 | Multiple `[[agents]]` + `[agents.pool]` | Agent teams with elastic scaling |
+| 0-1 | `[workspace]` + `[[agent]]` + `[beads]` | One agent doing work with tracked beads |
+| 2 | `[agent.loop]` | Agent continuously polls for ready beads, clean context per task |
+| 3 | Multiple `[[agent]]` + `[agent.pool]` | Agent teams with elastic scaling |
 | 4 | Messaging config | Inter-agent mail and nudge |
 | 5 | `[formulas]` | Structured multi-step workflow DAGs |
 | 6 | Health monitoring config | Ping, stall detection, auto-restart |
@@ -525,7 +525,7 @@ K8s solved config composition three times: multi-file apply, Kustomize, Helm. Ga
 
 ## Configured Roles (Not Concepts)
 
-In Gas Town, the mayor, witness, deacon, refinery, and polecats look like fundamental concepts. In Gas City, they're all just `[[agents]]` entries with different config:
+In Gas Town, the mayor, witness, deacon, refinery, and polecats look like fundamental concepts. In Gas City, they're all just `[[agent]]` entries with different config:
 
 | Gas Town Role | Gas City Config |
 |---------------|----------------|
@@ -604,7 +604,7 @@ The system converges to correct outcomes because work (beads), hooks, and molecu
 
 ### SDK Self-Sufficiency
 
-Every infrastructure operation (gate evaluation, health patrol, bead lifecycle, automation dispatch) must function with only the controller running. No SDK operation may depend on a specific user-configured agent role existing. Test: if removing an `[[agents]]` entry breaks an SDK feature, it's a violation. The controller drives infrastructure; user agents execute work.
+Every infrastructure operation (gate evaluation, health patrol, bead lifecycle, automation dispatch) must function with only the controller running. No SDK operation may depend on a specific user-configured agent role existing. Test: if removing an `[[agent]]` entry breaks an SDK feature, it's a violation. The controller drives infrastructure; user agents execute work.
 
 ## City Directory Layout
 

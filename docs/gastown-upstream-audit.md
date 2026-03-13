@@ -351,9 +351,9 @@ Go code making decisions that belong in prompts — moved to prompts.
 
 ### 12a. Per-role config
 - [-] **bd8df1e8** — Dog recognized as role in AgentEnv(). N/A — Gas City
-  has no role concept; per-agent config via `[[agents]]` entries.
+  has no role concept; per-agent config via `[[agent]]` entries.
 - [-] **e060349b** — `worker_agents` map. N/A — crew members are individual
-  `[[agents]]` entries with full config blocks.
+  `[[agent]]` entries with full config blocks.
 - [-] **2484936a** — Role registry (`autonomous`, `emoji`). N/A — `autonomous`
   is prompt-level (propulsion.md.tmpl). `emoji` field on Agent would remove
   the hardcoded roleEmoji map in tmux.go (ZFC violation) — deferred, low priority.

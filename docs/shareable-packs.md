@@ -39,16 +39,16 @@ name = "code-review"
 version = "1.0.0"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "reviewer"
 prompt_template = "prompts/reviewer.md"
 provider = "claude"
 
-[agents.pool]
+[agent.pool]
 min = 0
 max = 3
 
-[[agents]]
+[[agent]]
 name = "summarizer"
 prompt_template = "prompts/summarizer.md"
 provider = "claude"
@@ -69,7 +69,7 @@ Reference prompts and scripts using paths relative to the pack
 directory:
 
 ```toml
-[[agents]]
+[[agent]]
 name = "reviewer"
 prompt_template = "prompts/reviewer.md"
 session_setup_script = "scripts/setup.sh"
@@ -117,19 +117,19 @@ name = "gastown"
 schema = 1
 city_agents = ["mayor", "deacon"]
 
-[[agents]]
+[[agent]]
 name = "mayor"
 prompt_template = "prompts/mayor.md"
 
-[[agents]]
+[[agent]]
 name = "deacon"
 prompt_template = "prompts/deacon.md"
 
-[[agents]]
+[[agent]]
 name = "polecat"
 prompt_template = "prompts/polecat.md"
 
-[agents.pool]
+[agent.pool]
 min = 0
 max = 5
 ```
@@ -229,7 +229,7 @@ Override fields (all optional):
 For city-level customization, use patches:
 
 ```toml
-[[patches.agents]]
+[[patches.agent]]
 name = "mayor"
 provider = "gemini"
 ```

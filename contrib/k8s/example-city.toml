@@ -52,7 +52,7 @@ provider = "exec:gc-mail-mcp-agent-mail"
 # [daemon]
 # patrol_interval = "30s"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 prompt_template = "prompts/mayor.md.tmpl"
 install_hooks = ["claude"]
@@ -60,7 +60,7 @@ process_names = ["claude"]
 ready_prompt_prefix = "claude"
 nudge = "Check mail and hook status, then act accordingly."
 
-[[agents]]
+[[agent]]
 name = "coder"
 prompt_template = "prompts/coder.md.tmpl"
 install_hooks = ["claude"]

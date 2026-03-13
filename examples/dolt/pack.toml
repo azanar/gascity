@@ -69,12 +69,12 @@ name = "health"
 description = "Check Dolt data-plane health"
 script = "commands/health.sh"
 
-[[agents]]
+[[agent]]
 name = "dog"
 scope = "city"
 fallback = true
 nudge = "Check your hook for work assignments."
 idle_timeout = "2h"
-[agents.pool]
+[agent.pool]
 min = 0
 max = 3

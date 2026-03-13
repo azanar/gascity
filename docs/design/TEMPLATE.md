@@ -71,7 +71,7 @@ Include at least one concrete example showing the pain. Ideally two:
 one simple case and one that shows why the naive fix doesn't work.
 
 Good examples:
-- "Today, starting 10 ephemeral workers requires 10 [[agents]] entries
+- "Today, starting 10 ephemeral workers requires 10 [[agent]] entries
   in city.toml. Adding or removing workers means editing config and
   restarting the city."
 - "The reconciler polls every 5s even when nothing changes. In a city
@@ -96,11 +96,11 @@ experience FIRST, then explain how it works.
 If the proposal changes config, show the new TOML:
 
     ```toml
-    [[agents]]
+    [[agent]]
     name = "scanner"
     prompt_template = "prompts/scanner.md"
 
-    [agents.pool]
+    [agent.pool]
     min = 0
     max = 5
     check = "bd ready --label=scan --json | jq length"

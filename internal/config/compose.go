@@ -162,6 +162,11 @@ func LoadWithIncludes(fs fsys.FS, path string, extraIncludes ...string) (*City, 
 	root.FormulaLayers = ComputeFormulaLayers(
 		cityTopoFormulas, cityLocalFormulas, rigFormulaDirs, root.Rigs, cityRoot)
 
+	// Inject implicit agents for built-in providers not already defined.
+	// Must happen after all composition (fragments, packs, patches) so
+	// explicit agents always take precedence.
+	InjectImplicitAgents(root)
+
 	// Validate all duration strings in the fully-merged config.
 	prov.Warnings = append(prov.Warnings, ValidateDurations(root, path)...)
 

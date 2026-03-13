@@ -374,7 +374,7 @@ Violations indicate bugs.
 
 ## Configuration
 
-Agent Protocol behavior is configured via `[[agents]]` entries and
+Agent Protocol behavior is configured via `[[agent]]` entries and
 `[workspace]` settings in `city.toml`:
 
 ```toml
@@ -382,7 +382,7 @@ Agent Protocol behavior is configured via `[[agents]]` entries and
 name = "my-city"
 session_template = "gc-{{.City}}-{{.Agent}}"  # custom session naming
 
-[[agents]]
+[[agent]]
 name = "worker"
 provider = "claude"                       # provider preset name
 start_command = "claude"                  # overrides provider default

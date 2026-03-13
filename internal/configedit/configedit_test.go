@@ -15,7 +15,7 @@ func minimalCity() string {
 	return `[workspace]
 name = "test-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 provider = "claude"
 `
@@ -26,7 +26,7 @@ func cityWithRig() string {
 	return `[workspace]
 name = "test-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 provider = "claude"
 
@@ -293,7 +293,7 @@ func TestResumeAgent_Inline(t *testing.T) {
 	city := `[workspace]
 name = "test-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 provider = "claude"
 suspended = true
@@ -447,7 +447,7 @@ func TestUpdateAgent_PreservesSuspended(t *testing.T) {
 	city := `[workspace]
 name = "test-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 provider = "claude"
 suspended = true
@@ -590,11 +590,11 @@ func TestDeleteRig(t *testing.T) {
 	city := `[workspace]
 name = "test-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 provider = "claude"
 
-[[agents]]
+[[agent]]
 name = "polecat"
 dir = "my-rig"
 provider = "claude"
@@ -649,7 +649,7 @@ func cityWithProvider() string {
 	return `[workspace]
 name = "test-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 provider = "claude"
 
@@ -798,7 +798,7 @@ func TestSetAgentPatch(t *testing.T) {
 
 	cfg := readTOML(t, path)
 	if len(cfg.Patches.Agents) != 1 {
-		t.Fatalf("patches.agents count = %d, want 1", len(cfg.Patches.Agents))
+		t.Fatalf("patches.agent count = %d, want 1", len(cfg.Patches.Agents))
 	}
 	if cfg.Patches.Agents[0].Name != "worker" {
 		t.Errorf("name = %q, want %q", cfg.Patches.Agents[0].Name, "worker")
@@ -823,7 +823,7 @@ func TestSetAgentPatch_Replaces(t *testing.T) {
 
 	cfg := readTOML(t, path)
 	if len(cfg.Patches.Agents) != 1 {
-		t.Fatalf("patches.agents count = %d, want 1 (should replace, not append)", len(cfg.Patches.Agents))
+		t.Fatalf("patches.agent count = %d, want 1 (should replace, not append)", len(cfg.Patches.Agents))
 	}
 }
 
@@ -841,7 +841,7 @@ func TestDeleteAgentPatch(t *testing.T) {
 
 	cfg := readTOML(t, path)
 	if len(cfg.Patches.Agents) != 0 {
-		t.Error("patches.agents should be empty after delete")
+		t.Error("patches.agent should be empty after delete")
 	}
 }
 

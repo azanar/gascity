@@ -114,10 +114,10 @@ func TestDoSuspendCityPreservesConfig(t *testing.T) {
 [workspace]
 name = "test-city"
 
-[[agents]]
+[[agent]]
 name = "inline-agent"
 `)
-	f.Files["/city/packs/mypack/agents.toml"] = []byte(`[[agents]]
+	f.Files["/city/packs/mypack/agents.toml"] = []byte(`[[agent]]
 name = "pack-worker"
 dir = "myrig"
 `)

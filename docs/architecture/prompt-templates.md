@@ -125,10 +125,10 @@ in `examples/gastown/packs/gastown/prompts/`.
 ## Configuration
 
 ```toml
-[[agents]]
+[[agent]]
 name = "worker"
 prompt_template = "prompts/worker.md.tmpl"
-[agents.env]
+[agent.env]
 CUSTOM_VAR = "value"    # available as {{.CUSTOM_VAR}} in template
 ```
 

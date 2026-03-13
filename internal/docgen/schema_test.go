@@ -44,7 +44,7 @@ func TestGenerateCitySchema(t *testing.T) {
 
 	// City properties are in $defs.City (schema uses $ref at top level).
 	props := defProperties(t, raw, "City")
-	for _, expected := range []string{"workspace", "providers", "agents", "rigs"} {
+	for _, expected := range []string{"workspace", "providers", "agent", "rigs"} {
 		if _, ok := props[expected]; !ok {
 			t.Errorf("missing City property %q", expected)
 		}

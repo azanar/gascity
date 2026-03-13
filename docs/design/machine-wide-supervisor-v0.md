@@ -63,7 +63,7 @@ Gas City already explicitly follows the Erlang/OTP supervision model
 | Top-level supervisor | N/A | Machine supervisor |
 | Supervisor | Controller per city | City supervisor (child of machine) |
 | Worker | Agent | Agent (unchanged) |
-| Child spec | `[[agents]]` in city.toml | `[[agents]]` (unchanged) |
+| Child spec | `[[agent]]` in city.toml | `[[agent]]` (unchanged) |
 | Application controller | N/A | `~/.gc/supervisor.sock` |
 
 Today each city is an independent Erlang "node." This proposal connects

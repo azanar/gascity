@@ -105,7 +105,7 @@ directly:
 ```
 $ gc agent suspend pack-derived-agent
 Error: agent "pack-derived-agent" is defined by pack "gastown";
-       use [[patches.agents]] to override
+       use [[patches.agent]] to override
 ```
 
 The API has no equivalent awareness. A naive "just add POST endpoints"
@@ -660,7 +660,7 @@ PATCH  /v0/patches/provider/{name}                 (new)
 DELETE /v0/patches/provider/{name}                 (new)
 ```
 
-Patch resources project into `[[patches.agents]]`, `[[patches.rigs]]`, and
+Patch resources project into `[[patches.agent]]`, `[[patches.rigs]]`, and
 `[[patches.providers]]` sections of city.toml.
 
 **`POST /v0/patches/agents`** — Create agent patch:

@@ -19,8 +19,8 @@ if [ -z "$IN_PROGRESS" ] || [ "$IN_PROGRESS" = "[]" ]; then
     exit 0
 fi
 
-# Step 2: Get all known agent names (from config, scoped to [[agents]] blocks).
-AGENTS=$(gc config show 2>/dev/null | awk '/^\[\[agents\]\]/{a=1} a && /^\s*name\s*=/{print; a=0}' | sed 's/.*=\s*"\(.*\)"/\1/') || exit 0
+# Step 2: Get all known agent names (from config, scoped to [[agent]] blocks).
+AGENTS=$(gc config show 2>/dev/null | awk '/^\[\[agent\]\]/{a=1} a && /^\s*name\s*=/{print; a=0}' | sed 's/.*=\s*"\(.*\)"/\1/') || exit 0
 if [ -z "$AGENTS" ]; then
     exit 0
 fi

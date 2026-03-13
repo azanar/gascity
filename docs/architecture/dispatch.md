@@ -214,7 +214,7 @@ The dispatch mechanism is configured through agent-level fields in
 `city.toml`:
 
 ```toml
-[[agents]]
+[[agent]]
 name = "worker"
 
 # Custom sling query (optional -- has sensible defaults).
@@ -232,7 +232,7 @@ nudge = "Work slung. Check your hook."
 Pool agents with default queries:
 
 ```toml
-[[agents]]
+[[agent]]
 name = "coder"
 pool = { min = 1, max = 3, check = "echo 2" }
 # Default sling_query: bd update {} --label=pool:coder

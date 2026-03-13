@@ -45,21 +45,21 @@ stderr 'instantiating formula'
 [workspace]
 name = "sling"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 start_command = "echo hello"
 sling_query = "bd update {} --assignee=mayor"
 
-[[agents]]
+[[agent]]
 name = "worker"
 start_command = "echo hello"
 sling_query = "bd update {} --assignee=worker"
 
-[[agents]]
+[[agent]]
 name = "empty-pool"
 start_command = "echo hello"
 sling_query = "bd update {} --label=pool:empty-pool"
-[agents.pool]
+[agent.pool]
 min = 0
 max = 0
 check = "echo 0"

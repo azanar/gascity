@@ -11,7 +11,7 @@ import (
 type WakeReason string
 
 const (
-	// WakeConfig means an [[agents]] entry exists for this session.
+	// WakeConfig means an [[agent]] entry exists for this session.
 	// For pools, only if the slot is within the desired count.
 	WakeConfig WakeReason = "config"
 	// WakeAttached means a user terminal is connected to the session.

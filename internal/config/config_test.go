@@ -78,7 +78,7 @@ func TestMarshalDefaultCityFormat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
 	}
-	want := "[workspace]\nname = \"bright-lights\"\n\n[[agents]]\nname = \"mayor\"\nprompt_template = \".gc/prompts/mayor.md\"\n"
+	want := "[workspace]\nname = \"bright-lights\"\n\n[[agent]]\nname = \"mayor\"\nprompt_template = \".gc/prompts/mayor.md\"\n"
 	if string(data) != want {
 		t.Errorf("Marshal output:\ngot:\n%s\nwant:\n%s", data, want)
 	}
@@ -89,7 +89,7 @@ func TestParseWithAgentsAndStartCommand(t *testing.T) {
 [workspace]
 name = "bright-lights"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 start_command = "claude --dangerously-skip-permissions"
 `)
@@ -116,7 +116,7 @@ func TestParseAgentsNoStartCommand(t *testing.T) {
 [workspace]
 name = "test-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	cfg, err := Parse(data)
@@ -173,7 +173,7 @@ func TestLoadSuccess(t *testing.T) {
 	content := `[workspace]
 name = "test"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
@@ -239,11 +239,11 @@ func TestParseWithProvider(t *testing.T) {
 [workspace]
 name = "multi-provider"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 provider = "claude"
 
-[[agents]]
+[[agent]]
 name = "worker"
 provider = "codex"
 `)
@@ -270,7 +270,7 @@ name = "test-city"
 [beads]
 provider = "file"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	cfg, err := Parse(data)
@@ -287,7 +287,7 @@ func TestParseNoBeadsSection(t *testing.T) {
 [workspace]
 name = "test-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	cfg, err := Parse(data)
@@ -318,7 +318,7 @@ name = "test-city"
 [session]
 provider = "subprocess"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	cfg, err := Parse(data)
@@ -335,7 +335,7 @@ func TestParseNoSessionSection(t *testing.T) {
 [workspace]
 name = "test-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	cfg, err := Parse(data)
@@ -366,7 +366,7 @@ name = "test-city"
 [mail]
 provider = "exec:/usr/local/bin/mail-bridge"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	cfg, err := Parse(data)
@@ -383,7 +383,7 @@ func TestParseNoMailSection(t *testing.T) {
 [workspace]
 name = "test-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	cfg, err := Parse(data)
@@ -414,7 +414,7 @@ name = "test-city"
 [events]
 provider = "fake"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	cfg, err := Parse(data)
@@ -431,7 +431,7 @@ func TestParseNoEventsSection(t *testing.T) {
 [workspace]
 name = "test-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	cfg, err := Parse(data)
@@ -459,11 +459,11 @@ func TestParseWithPromptTemplate(t *testing.T) {
 [workspace]
 name = "bright-lights"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 prompt_template = ".gc/prompts/mayor.md"
 
-[[agents]]
+[[agent]]
 name = "worker"
 prompt_template = ".gc/prompts/worker.md"
 `)
@@ -501,10 +501,10 @@ func TestParseMultipleAgents(t *testing.T) {
 [workspace]
 name = "big-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 
-[[agents]]
+[[agent]]
 name = "worker"
 start_command = "codex --dangerously-bypass-approvals-and-sandbox"
 `)
@@ -532,7 +532,7 @@ func TestParseWorkspaceProvider(t *testing.T) {
 name = "bright-lights"
 provider = "claude"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	cfg, err := Parse(data)
@@ -550,7 +550,7 @@ func TestParseWorkspaceStartCommand(t *testing.T) {
 name = "bright-lights"
 start_command = "my-agent --flag"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	cfg, err := Parse(data)
@@ -615,9 +615,9 @@ func TestWizardCityEmptyProvider(t *testing.T) {
 	}
 	s := string(data)
 	// provider should be omitted when empty.
-	idx := strings.Index(s, "[[agents]]")
+	idx := strings.Index(s, "[[agent]]")
 	if idx == -1 {
-		t.Fatal("marshal output missing [[agents]] section")
+		t.Fatal("marshal output missing [[agent]] section")
 	}
 	wsSection := s[:idx]
 	if strings.Contains(wsSection, "provider") {
@@ -646,9 +646,9 @@ func TestWizardCityStartCommand(t *testing.T) {
 		t.Errorf("Marshal output missing start_command:\n%s", s)
 	}
 	// provider should NOT appear.
-	idx := strings.Index(s, "[[agents]]")
+	idx := strings.Index(s, "[[agent]]")
 	if idx == -1 {
-		t.Fatal("marshal output missing [[agents]] section")
+		t.Fatal("marshal output missing [[agent]] section")
 	}
 	wsSection := s[:idx]
 	if strings.Contains(wsSection, "provider") {
@@ -664,10 +664,10 @@ func TestMarshalOmitsEmptyWorkspaceFields(t *testing.T) {
 	}
 	s := string(data)
 	// Workspace provider and start_command should not appear when empty.
-	// Check the workspace section specifically (before [[agents]]).
-	idx := strings.Index(s, "[[agents]]")
+	// Check the workspace section specifically (before [[agent]]).
+	idx := strings.Index(s, "[[agent]]")
 	if idx == -1 {
-		t.Fatal("marshal output missing [[agents]] section")
+		t.Fatal("marshal output missing [[agent]] section")
 	}
 	wsSection := s[:idx]
 	if strings.Contains(wsSection, "provider") {
@@ -691,7 +691,7 @@ prompt_mode = "arg"
 ready_delay_ms = 5000
 process_names = ["kiro", "node"]
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	cfg, err := Parse(data)
@@ -724,7 +724,7 @@ func TestParseAgentOverrideFields(t *testing.T) {
 [workspace]
 name = "bright-lights"
 
-[[agents]]
+[[agent]]
 name = "scout"
 provider = "claude"
 args = ["--dangerously-skip-permissions", "--verbose"]
@@ -833,11 +833,11 @@ func TestParseAgentDir(t *testing.T) {
 [workspace]
 name = "test"
 
-[[agents]]
+[[agent]]
 name = "worker"
 dir = "projects/frontend"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	cfg, err := Parse(data)
@@ -860,12 +860,12 @@ func TestParseAgentPreStart(t *testing.T) {
 [workspace]
 name = "test"
 
-[[agents]]
+[[agent]]
 name = "worker"
 dir = "/repo"
 pre_start = ["mkdir -p /tmp/work", "git worktree add /tmp/work"]
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	cfg, err := Parse(data)
@@ -952,10 +952,10 @@ func TestParseAgentEnv(t *testing.T) {
 [workspace]
 name = "test"
 
-[[agents]]
+[[agent]]
 name = "worker"
 
-[agents.env]
+[agent.env]
 EXTRA = "yes"
 DEBUG = "1"
 `)
@@ -981,12 +981,12 @@ func TestParseAgentWithPool(t *testing.T) {
 [workspace]
 name = "pool-city"
 
-[[agents]]
+[[agent]]
 name = "worker"
 prompt_template = ".gc/prompts/pool-worker.md"
 start_command = "echo hello"
 
-[agents.pool]
+[agent.pool]
 min = 0
 max = 5
 check = "echo 3"
@@ -1018,7 +1018,7 @@ func TestParseAgentWithoutPool(t *testing.T) {
 [workspace]
 name = "simple"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	cfg, err := Parse(data)
@@ -1367,14 +1367,14 @@ func TestMixedAgentsWithAndWithoutPool(t *testing.T) {
 [workspace]
 name = "mixed"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 
-[[agents]]
+[[agent]]
 name = "worker"
 start_command = "echo hello"
 
-[agents.pool]
+[agent.pool]
 min = 0
 max = 5
 check = "echo 2"
@@ -1624,7 +1624,7 @@ name = "test"
 [daemon]
 patrol_interval = "15s"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	cfg, err := Parse(data)
@@ -1645,7 +1645,7 @@ func TestParseDaemonConfigMissing(t *testing.T) {
 [workspace]
 name = "test"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	cfg, err := Parse(data)
@@ -1722,7 +1722,7 @@ patrol_interval = "15s"
 max_restarts = 3
 restart_window = "30m"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	cfg, err := Parse(data)
@@ -1751,7 +1751,7 @@ name = "test"
 [daemon]
 max_restarts = 0
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	cfg, err := Parse(data)
@@ -1823,7 +1823,7 @@ name = "test"
 patrol_interval = "15s"
 shutdown_timeout = "3s"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	cfg, err := Parse(data)
@@ -1873,7 +1873,7 @@ name = "test"
 [daemon]
 drift_drain_timeout = "3m"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	cfg, err := Parse(data)
@@ -1920,11 +1920,11 @@ func TestParseDrainTimeout(t *testing.T) {
 [workspace]
 name = "test"
 
-[[agents]]
+[[agent]]
 name = "worker"
 start_command = "echo hello"
 
-[agents.pool]
+[agent.pool]
 min = 0
 max = 5
 check = "echo 3"
@@ -1993,7 +1993,7 @@ func TestRigsParsing(t *testing.T) {
 [workspace]
 name = "my-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 
 [[rigs]]
@@ -2232,10 +2232,10 @@ func TestParseSuspended(t *testing.T) {
 [workspace]
 name = "test"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 
-[[agents]]
+[[agent]]
 name = "builder"
 suspended = true
 `)
@@ -2520,7 +2520,7 @@ func TestParseInstallAgentHooksWorkspace(t *testing.T) {
 name = "test"
 install_agent_hooks = ["claude", "gemini"]
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `
 	cfg, err := Parse([]byte(toml))
@@ -2541,7 +2541,7 @@ func TestParseInstallAgentHooksAgent(t *testing.T) {
 name = "test"
 install_agent_hooks = ["claude"]
 
-[[agents]]
+[[agent]]
 name = "polecat"
 install_agent_hooks = ["gemini", "copilot"]
 `
@@ -2960,7 +2960,7 @@ name = "test"
 [session]
 socket = "bright-lights"
 
-[[agents]]
+[[agent]]
 name = "a"
 `
 	cfg, err := Parse([]byte(toml))
@@ -2985,7 +2985,7 @@ nudge_lock_timeout = "45s"
 debounce_ms = 300
 display_ms = 8000
 
-[[agents]]
+[[agent]]
 name = "a"
 `
 	cfg, err := Parse([]byte(toml))
@@ -3021,7 +3021,7 @@ name = "test"
 port = 8080
 bind = "0.0.0.0"
 
-[[agents]]
+[[agent]]
 name = "a"
 `
 	cfg, err := Parse([]byte(toml))
@@ -3044,7 +3044,7 @@ func TestAPIConfigDefaults(t *testing.T) {
 [workspace]
 name = "test"
 
-[[agents]]
+[[agent]]
 name = "a"
 `
 	cfg, err := Parse([]byte(toml))
@@ -3064,10 +3064,10 @@ func TestPoolConfigOnDeathOnBootRoundTrip(t *testing.T) {
 [workspace]
 name = "test"
 
-[[agents]]
+[[agent]]
 name = "dog"
 
-[agents.pool]
+[agent.pool]
 min = 0
 max = 5
 on_death = "echo dead"
@@ -3244,5 +3244,153 @@ func TestValidateDependsOn(t *testing.T) {
 				t.Errorf("error %q does not contain %q", err.Error(), tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestInjectImplicitAgents_EmptyCity(t *testing.T) {
+	cfg := &City{}
+	InjectImplicitAgents(cfg)
+
+	providers := BuiltinProviderOrder()
+	if len(cfg.Agents) != len(providers) {
+		t.Fatalf("got %d agents, want %d", len(cfg.Agents), len(providers))
+	}
+	for i, name := range providers {
+		a := cfg.Agents[i]
+		if a.Name != name {
+			t.Errorf("agent[%d].Name = %q, want %q", i, a.Name, name)
+		}
+		if a.Provider != name {
+			t.Errorf("agent[%d].Provider = %q, want %q", i, a.Provider, name)
+		}
+		if !a.Implicit {
+			t.Errorf("agent[%d].Implicit = false, want true", i)
+		}
+		if a.Pool == nil {
+			t.Fatalf("agent[%d].Pool is nil", i)
+		}
+		if a.Pool.Min != 0 {
+			t.Errorf("agent[%d].Pool.Min = %d, want 0", i, a.Pool.Min)
+		}
+		if a.Pool.Max != -1 {
+			t.Errorf("agent[%d].Pool.Max = %d, want -1", i, a.Pool.Max)
+		}
+	}
+}
+
+func TestInjectImplicitAgents_ExplicitWins(t *testing.T) {
+	cfg := &City{
+		Agents: []Agent{
+			{Name: "claude", Provider: "claude", Pool: &PoolConfig{Min: 1, Max: 3}},
+		},
+	}
+	InjectImplicitAgents(cfg)
+
+	// Should have 1 explicit claude + (N-1) implicit for other providers.
+	providers := BuiltinProviderOrder()
+	if len(cfg.Agents) != len(providers) {
+		t.Fatalf("got %d agents, want %d", len(cfg.Agents), len(providers))
+	}
+
+	// First agent is the explicit one — not overwritten.
+	claude := cfg.Agents[0]
+	if claude.Implicit {
+		t.Error("explicit claude should not be marked implicit")
+	}
+	if claude.Pool.Max != 3 {
+		t.Errorf("explicit claude Pool.Max = %d, want 3", claude.Pool.Max)
+	}
+
+	// No duplicate claude.
+	count := 0
+	for _, a := range cfg.Agents {
+		if a.Name == "claude" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("found %d claude agents, want 1", count)
+	}
+}
+
+func TestInjectImplicitAgents_RigScopedExplicitDoesNotBlockCity(t *testing.T) {
+	// An explicit rig-scoped "claude" should NOT prevent the implicit city-scoped one.
+	cfg := &City{
+		Rigs: []Rig{{Name: "my-rig", Path: "/tmp/my-rig"}},
+		Agents: []Agent{
+			{Name: "claude", Dir: "my-rig", Provider: "claude"},
+		},
+	}
+	InjectImplicitAgents(cfg)
+
+	providers := BuiltinProviderOrder()
+	// 1 explicit rig-scoped claude + N implicit city-scoped + (N-1) implicit rig-scoped
+	// (the explicit rig-scoped claude blocks the implicit rig-scoped claude).
+	want := 1 + len(providers) + (len(providers) - 1)
+	if len(cfg.Agents) != want {
+		t.Fatalf("got %d agents, want %d", len(cfg.Agents), want)
+	}
+
+	// Both the explicit rig-scoped and implicit city-scoped claude should exist.
+	var rigExplicit, cityImplicit, rigImplicit int
+	for _, a := range cfg.Agents {
+		if a.Name == "claude" && a.Dir == "my-rig" && !a.Implicit {
+			rigExplicit++
+		}
+		if a.Name == "claude" && a.Dir == "" && a.Implicit {
+			cityImplicit++
+		}
+		if a.Name == "claude" && a.Dir == "my-rig" && a.Implicit {
+			rigImplicit++
+		}
+	}
+	if rigExplicit != 1 {
+		t.Errorf("explicit rig-scoped claude count = %d, want 1", rigExplicit)
+	}
+	if cityImplicit != 1 {
+		t.Errorf("implicit city-scoped claude count = %d, want 1", cityImplicit)
+	}
+	if rigImplicit != 0 {
+		t.Errorf("implicit rig-scoped claude count = %d, want 0 (blocked by explicit)", rigImplicit)
+	}
+}
+
+func TestInjectImplicitAgents_RigInjection(t *testing.T) {
+	// With rigs defined, implicit agents are injected for each rig too.
+	cfg := &City{
+		Rigs: []Rig{
+			{Name: "frontend", Path: "/tmp/frontend"},
+			{Name: "backend", Path: "/tmp/backend"},
+		},
+	}
+	InjectImplicitAgents(cfg)
+
+	providers := BuiltinProviderOrder()
+	// N city-scoped + N×2 rig-scoped = N×3
+	want := len(providers) * 3
+	if len(cfg.Agents) != want {
+		t.Fatalf("got %d agents, want %d", len(cfg.Agents), want)
+	}
+
+	// Verify each rig has all providers.
+	for _, rigName := range []string{"frontend", "backend"} {
+		rigAgents := 0
+		for _, a := range cfg.Agents {
+			if a.Dir == rigName && a.Implicit {
+				rigAgents++
+			}
+		}
+		if rigAgents != len(providers) {
+			t.Errorf("rig %q: got %d implicit agents, want %d", rigName, rigAgents, len(providers))
+		}
+	}
+
+	// Verify all rig-scoped agents have correct pool config.
+	for _, a := range cfg.Agents {
+		if a.Dir != "" && a.Implicit {
+			if a.Pool == nil || a.Pool.Min != 0 || a.Pool.Max != -1 {
+				t.Errorf("rig agent %s/%s: unexpected pool %+v", a.Dir, a.Name, a.Pool)
+			}
+		}
 	}
 }

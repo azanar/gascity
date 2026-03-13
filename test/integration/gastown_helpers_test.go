@@ -89,7 +89,7 @@ func writeGasTownToml(t *testing.T, cityDir, cityName string, agents []gasTownAg
 	fmt.Fprintf(&b, "\n[daemon]\npatrol_interval = \"100ms\"\n")
 
 	for _, a := range agents {
-		fmt.Fprintf(&b, "\n[[agents]]\nname = %s\n", quote(a.Name))
+		fmt.Fprintf(&b, "\n[[agent]]\nname = %s\n", quote(a.Name))
 		fmt.Fprintf(&b, "start_command = %s\n", quote(a.StartCommand))
 		if a.Dir != "" {
 			fmt.Fprintf(&b, "dir = %s\n", quote(a.Dir))
@@ -98,13 +98,13 @@ func writeGasTownToml(t *testing.T, cityDir, cityName string, agents []gasTownAg
 			fmt.Fprintf(&b, "suspended = true\n")
 		}
 		if len(a.Env) > 0 {
-			b.WriteString("\n[agents.env]\n")
+			b.WriteString("\n[agent.env]\n")
 			for k, v := range a.Env {
 				fmt.Fprintf(&b, "%s = %s\n", k, quote(v))
 			}
 		}
 		if a.Pool != nil {
-			fmt.Fprintf(&b, "\n[agents.pool]\nmin = %d\nmax = %d\ncheck = %s\n",
+			fmt.Fprintf(&b, "\n[agent.pool]\nmin = %d\nmax = %d\ncheck = %s\n",
 				a.Pool.Min, a.Pool.Max, quote(a.Pool.Check))
 		}
 	}

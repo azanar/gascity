@@ -143,7 +143,7 @@ func TestInstallBeadHooksRigAddIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(cityPath, "city.toml"),
-		[]byte("[workspace]\nname = \"test\"\n\n[[agents]]\nname = \"mayor\"\n"), 0o644); err != nil {
+		[]byte("[workspace]\nname = \"test\"\n\n[[agent]]\nname = \"mayor\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

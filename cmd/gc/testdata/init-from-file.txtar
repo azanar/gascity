@@ -37,15 +37,15 @@ stderr 'parsing'
 [workspace]
 name = "placeholder"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 start_command = "echo hello"
 
-[[agents]]
+[[agent]]
 name = "worker"
 start_command = "echo hello"
 
-[agents.pool]
+[agent.pool]
 min = 0
 max = 5
 check = "echo 3"

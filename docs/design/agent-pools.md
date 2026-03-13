@@ -6,7 +6,7 @@ scaling signal mechanism.
 
 ## Problem
 
-Today, `[[agents]]` defines a fixed set of always-on agents. Each is
+Today, `[[agent]]` defines a fixed set of always-on agents. Each is
 either running or suspended. There is no concept of "start N copies of
 a template based on demand" or "start only when work exists."
 
@@ -45,14 +45,14 @@ instead of "you have 30 seconds to die."
 
 ## Config shape
 
-Pool config is now merged into `[[agents]]` via an optional `[agents.pool]`
-sub-table. Every agent is implicitly a pool of size 1. Explicit `[agents.pool]`
+Pool config is now merged into `[[agent]]` via an optional `[agent.pool]`
+sub-table. Every agent is implicitly a pool of size 1. Explicit `[agent.pool]`
 overrides the defaults.
 
 ### Fixed agent (implicit pool: min=1, max=1)
 
 ```toml
-[[agents]]
+[[agent]]
 name = "mayor"
 prompt_template = "prompts/mayor.md"
 ```
@@ -60,11 +60,11 @@ prompt_template = "prompts/mayor.md"
 ### Ephemeral singleton (starts only when work exists)
 
 ```toml
-[[agents]]
+[[agent]]
 name = "refinery"
 prompt_template = "prompts/refinery.md"
 
-[agents.pool]
+[agent.pool]
 min = 0
 max = 1
 check = "bd list --label=needs-merge --json | jq length"
@@ -73,12 +73,12 @@ check = "bd list --label=needs-merge --json | jq length"
 ### Elastic pool (max>1 -> gets -1, -2, ... suffixes)
 
 ```toml
-[[agents]]
+[[agent]]
 name = "worker"
 provider = "claude"
 prompt_template = "prompts/worker.md"
 
-[agents.pool]
+[agent.pool]
 min = 0
 max = 10
 check = "bd ready --json | jq length"
@@ -86,16 +86,16 @@ check = "bd ready --json | jq length"
 
 ### Key rules
 
-- No `[agents.pool]` → implicit min=1, max=1, check="echo 1" (always-on)
-- `[agents.pool]` present → defaults: max=1, check="echo 1", min=0
+- No `[agent.pool]` → implicit min=1, max=1, check="echo 1" (always-on)
+- `[agent.pool]` present → defaults: max=1, check="echo 1", min=0
 - If max == 1: bare name (no `-1` suffix)
 - If max > 1: instances are `{name}-1`, `{name}-2`, etc.
 
 ### Relationship to old `[[pools]]`
 
 The separate `[[pools]]` top-level section has been removed. All pool
-configuration now lives on `[[agents]]` entries via `[agents.pool]`.
-An `[[agents]]` entry without `[agents.pool]` is a fixed, always-on
+configuration now lives on `[[agent]]` entries via `[agent.pool]`.
+An `[[agent]]` entry without `[agent.pool]` is a fixed, always-on
 agent. The pool manager evaluates `check` and produces a desired agent
 list; the reconciler makes reality match.
 
@@ -245,7 +245,7 @@ The existing `doReconcileAgents` handles `[]agent.Agent`. For pools, the
 flow becomes:
 
 ```
-1. For each [[agents]] entry: reconcile as today (fixed agents)
+1. For each [[agent]] entry: reconcile as today (fixed agents)
 2. For each [[pools]] entry:
    a. Run check → get desired count
    b. Clamp to [min, max]
@@ -256,7 +256,7 @@ flow becomes:
 ```
 
 The pool manager produces `[]agent.Agent` entries dynamically. The
-reconciler doesn't need to know whether an agent came from `[[agents]]`
+reconciler doesn't need to know whether an agent came from `[[agent]]`
 or `[[pools]]` — it just starts/stops sessions.
 
 ## Controller loop

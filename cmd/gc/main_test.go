@@ -176,7 +176,7 @@ func TestDoRigAddCreatesDirIfMissing(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(cityPath, "city.toml"),
-		[]byte("[workspace]\nname = \"test\"\n\n[[agents]]\nname = \"mayor\"\n"), 0o644); err != nil {
+		[]byte("[workspace]\nname = \"test\"\n\n[[agent]]\nname = \"mayor\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -240,7 +240,7 @@ func TestDoRigAddWithGit(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(cityPath, "city.toml"),
-		[]byte("[workspace]\nname = \"test\"\n\n[[agents]]\nname = \"mayor\"\n"), 0o644); err != nil {
+		[]byte("[workspace]\nname = \"test\"\n\n[[agent]]\nname = \"mayor\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -270,7 +270,7 @@ func TestDoRigAddWithoutGit(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(cityPath, "city.toml"),
-		[]byte("[workspace]\nname = \"test\"\n\n[[agents]]\nname = \"mayor\"\n"), 0o644); err != nil {
+		[]byte("[workspace]\nname = \"test\"\n\n[[agent]]\nname = \"mayor\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -306,7 +306,7 @@ func TestDoRigListConfigLoadFails(t *testing.T) {
 
 func TestDoRigListSuccess(t *testing.T) {
 	f := fsys.NewFake()
-	f.Files["/city/city.toml"] = []byte("[workspace]\nname = \"test-city\"\n\n[[agents]]\nname = \"mayor\"\n\n[[rigs]]\nname = \"alpha\"\npath = \"/projects/alpha\"\n\n[[rigs]]\nname = \"beta\"\npath = \"/projects/beta\"\n")
+	f.Files["/city/city.toml"] = []byte("[workspace]\nname = \"test-city\"\n\n[[agent]]\nname = \"mayor\"\n\n[[rigs]]\nname = \"alpha\"\npath = \"/projects/alpha\"\n\n[[rigs]]\nname = \"beta\"\npath = \"/projects/beta\"\n")
 
 	var stdout, stderr bytes.Buffer
 	code := doRigList(f, "/city", &stdout, &stderr)
@@ -738,7 +738,7 @@ func TestDoInitWritesExpectedTOML(t *testing.T) {
 	want := `[workspace]
 name = "bright-lights"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 prompt_template = ".gc/prompts/mayor.md"
 `
@@ -1239,14 +1239,14 @@ func TestCmdInitFromTOMLFileSuccess(t *testing.T) {
 name = "placeholder"
 provider = "claude"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 prompt_template = ".gc/prompts/mayor.md"
 
-[[agents]]
+[[agent]]
 name = "worker"
 
-[agents.pool]
+[agent.pool]
 min = 0
 max = 5
 check = "echo 3"
@@ -1935,7 +1935,7 @@ func TestDoPrimeWithKnownAgent(t *testing.T) {
 	toml := `[workspace]
 name = "test-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 prompt_template = ".gc/prompts/mayor.md"
 `
@@ -1970,7 +1970,7 @@ func TestDoPrimeWithUnknownAgent(t *testing.T) {
 	toml := `[workspace]
 name = "test-city"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 prompt_template = ".gc/prompts/mayor.md"
 `
@@ -2031,12 +2031,12 @@ func TestDoPrimeBareName(t *testing.T) {
 	tomlContent := `[workspace]
 name = "test-city"
 
-[[agents]]
+[[agent]]
 name = "polecat"
 dir = "myrig"
 prompt_template = ".gc/prompts/polecat.md"
 
-[agents.pool]
+[agent.pool]
 min = 1
 max = 3
 `

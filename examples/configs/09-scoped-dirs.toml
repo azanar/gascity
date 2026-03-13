@@ -10,16 +10,16 @@
 name = "my-city"
 provider = "claude"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 prompt_template = ".gc/prompts/mayor.md"
 
-[[agents]]
+[[agent]]
 name = "frontend"
 dir = "projects/frontend"
 prompt_template = ".gc/prompts/scoped-worker.md"
 
-[[agents]]
+[[agent]]
 name = "backend"
 dir = "projects/backend"
 prompt_template = ".gc/prompts/scoped-worker.md"

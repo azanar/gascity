@@ -99,7 +99,7 @@ func TestHandleAgentPatchSet(t *testing.T) {
 	}
 
 	if len(fs.cfg.Patches.Agents) != 1 {
-		t.Fatalf("patches.agents count = %d, want 1", len(fs.cfg.Patches.Agents))
+		t.Fatalf("patches.agent count = %d, want 1", len(fs.cfg.Patches.Agents))
 	}
 	if fs.cfg.Patches.Agents[0].Name != "worker" {
 		t.Errorf("name = %q, want %q", fs.cfg.Patches.Agents[0].Name, "worker")
@@ -139,7 +139,7 @@ func TestHandleAgentPatchDelete(t *testing.T) {
 	}
 
 	if len(fs.cfg.Patches.Agents) != 0 {
-		t.Errorf("patches.agents count = %d, want 0", len(fs.cfg.Patches.Agents))
+		t.Errorf("patches.agent count = %d, want 0", len(fs.cfg.Patches.Agents))
 	}
 }
 

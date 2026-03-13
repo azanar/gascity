@@ -18,7 +18,7 @@
 # Requirements: docker, jq
 # Container requirement: tmux (hard error if missing)
 #
-# Configuration via agent env vars (set in city.toml [[agents]] env):
+# Configuration via agent env vars (set in city.toml [[agent]] env):
 #   GC_DOCKER_IMAGE      — container image (default: gc-agent:latest)
 #   GC_DOCKER_NETWORK    — Docker network name (optional)
 #   GC_DOCKER_EXTRA      — extra docker-run flags (optional, space-separated)

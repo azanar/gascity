@@ -52,10 +52,10 @@ stdout 'Patrol complete'
 [workspace]
 name = "handofftown"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 start_command = "echo hello"
 
-[[agents]]
+[[agent]]
 name = "deacon"
 start_command = "echo hello"

@@ -756,7 +756,7 @@
           "type": "object",
           "description": "Packs defines named remote pack sources fetched via git."
         },
-        "agents": {
+        "agent": {
           "items": {
             "$ref": "#/$defs/Agent"
           },
@@ -827,7 +827,7 @@
       "type": "object",
       "required": [
         "workspace",
-        "agents"
+        "agent"
       ],
       "description": "City is the top-level configuration for a Gas City instance."
     },
@@ -1043,7 +1043,7 @@
     },
     "Patches": {
       "properties": {
-        "agents": {
+        "agent": {
           "items": {
             "$ref": "#/$defs/AgentPatch"
           },

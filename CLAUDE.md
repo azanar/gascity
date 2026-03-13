@@ -140,7 +140,7 @@ These decisions are final. Do not revisit them.
   function with only the controller running. No SDK operation may
   depend on a specific user-configured agent role existing. The
   controller drives infrastructure; user agents execute work. Test:
-  if removing a `[[agents]]` entry breaks an SDK feature, it's a
+  if removing a `[[agent]]` entry breaks an SDK feature, it's a
   violation.
 
 ## What Gas City does NOT contain

@@ -153,12 +153,12 @@ rendering of `.md.tmpl` files with variables from city/rig/agent config.
 
 ### Pre-start hooks
 
-**Why Go:** Generic `pre_start` field on `[[agents]]` config. Run a
+**Why Go:** Generic `pre_start` field on `[[agent]]` config. Run a
 shell command before agent session starts (e.g., `git pull`).
 
 **Config:**
 ```toml
-[[agents]]
+[[agent]]
 name = "refinery"
 pre_start = "git pull --rebase"
 ```
@@ -203,7 +203,7 @@ exit (reset). `max_restarts` within `restart_window` → backoff.
 
 **Config:**
 ```toml
-[agents.pool]
+[agent.pool]
 max_restarts = 3
 restart_window = "5m"
 ```

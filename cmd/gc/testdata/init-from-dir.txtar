@@ -43,7 +43,7 @@ stderr 'no city.toml'
 name = "template"
 provider = "claude"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 prompt_template = ".gc/prompts/mayor.md"
 

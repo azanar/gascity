@@ -15,18 +15,19 @@ func TestLoadWithIncludes_NoIncludes(t *testing.T) {
 [workspace]
 name = "test"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	cfg, prov, err := LoadWithIncludes(fs, "/city/city.toml")
 	if err != nil {
 		t.Fatalf("LoadWithIncludes: %v", err)
 	}
-	if len(cfg.Agents) != 1 {
-		t.Fatalf("len(Agents) = %d, want 1", len(cfg.Agents))
+	explicit := explicitAgents(cfg.Agents)
+	if len(explicit) != 1 {
+		t.Fatalf("len(explicit Agents) = %d, want 1", len(explicit))
 	}
-	if cfg.Agents[0].Name != "mayor" {
-		t.Errorf("Agents[0].Name = %q, want %q", cfg.Agents[0].Name, "mayor")
+	if explicit[0].Name != "mayor" {
+		t.Errorf("Agents[0].Name = %q, want %q", explicit[0].Name, "mayor")
 	}
 	if prov.Root != "/city/city.toml" {
 		t.Errorf("Root = %q, want %q", prov.Root, "/city/city.toml")
@@ -51,11 +52,11 @@ include = ["agents/workers.toml"]
 [workspace]
 name = "test"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `)
 	fs.Files["/city/agents/workers.toml"] = []byte(`
-[[agents]]
+[[agent]]
 name = "worker"
 dir = "project"
 `)
@@ -63,17 +64,18 @@ dir = "project"
 	if err != nil {
 		t.Fatalf("LoadWithIncludes: %v", err)
 	}
-	if len(cfg.Agents) != 2 {
-		t.Fatalf("len(Agents) = %d, want 2", len(cfg.Agents))
+	explicit := explicitAgents(cfg.Agents)
+	if len(explicit) != 2 {
+		t.Fatalf("len(explicit Agents) = %d, want 2", len(explicit))
 	}
-	if cfg.Agents[0].Name != "mayor" {
-		t.Errorf("Agents[0].Name = %q, want %q", cfg.Agents[0].Name, "mayor")
+	if explicit[0].Name != "mayor" {
+		t.Errorf("Agents[0].Name = %q, want %q", explicit[0].Name, "mayor")
 	}
-	if cfg.Agents[1].Name != "worker" {
-		t.Errorf("Agents[1].Name = %q, want %q", cfg.Agents[1].Name, "worker")
+	if explicit[1].Name != "worker" {
+		t.Errorf("Agents[1].Name = %q, want %q", explicit[1].Name, "worker")
 	}
-	if cfg.Agents[1].Dir != "project" {
-		t.Errorf("Agents[1].Dir = %q, want %q", cfg.Agents[1].Dir, "project")
+	if explicit[1].Dir != "project" {
+		t.Errorf("Agents[1].Dir = %q, want %q", explicit[1].Dir, "project")
 	}
 
 	// Provenance.
@@ -135,25 +137,26 @@ include = ["a.toml", "b.toml"]
 name = "test"
 `)
 	fs.Files["/city/a.toml"] = []byte(`
-[[agents]]
+[[agent]]
 name = "alpha"
 `)
 	fs.Files["/city/b.toml"] = []byte(`
-[[agents]]
+[[agent]]
 name = "beta"
 `)
 	cfg, prov, err := LoadWithIncludes(fs, "/city/city.toml")
 	if err != nil {
 		t.Fatalf("LoadWithIncludes: %v", err)
 	}
-	if len(cfg.Agents) != 2 {
-		t.Fatalf("len(Agents) = %d, want 2", len(cfg.Agents))
+	explicit := explicitAgents(cfg.Agents)
+	if len(explicit) != 2 {
+		t.Fatalf("len(explicit Agents) = %d, want 2", len(explicit))
 	}
-	if cfg.Agents[0].Name != "alpha" {
-		t.Errorf("Agents[0].Name = %q, want %q", cfg.Agents[0].Name, "alpha")
+	if explicit[0].Name != "alpha" {
+		t.Errorf("Agents[0].Name = %q, want %q", explicit[0].Name, "alpha")
 	}
-	if cfg.Agents[1].Name != "beta" {
-		t.Errorf("Agents[1].Name = %q, want %q", cfg.Agents[1].Name, "beta")
+	if explicit[1].Name != "beta" {
+		t.Errorf("Agents[1].Name = %q, want %q", explicit[1].Name, "beta")
 	}
 	if len(prov.Sources) != 3 {
 		t.Errorf("len(Sources) = %d, want 3", len(prov.Sources))
@@ -171,7 +174,7 @@ name = "test"
 	fs.Files["/city/fragment.toml"] = []byte(`
 include = ["other.toml"]
 
-[[agents]]
+[[agent]]
 name = "worker"
 `)
 	_, _, err := LoadWithIncludes(fs, "/city/city.toml")
@@ -399,12 +402,12 @@ include = ["agents/team.toml"]
 [workspace]
 name = "test"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 prompt_template = "prompts/mayor.md"
 `)
 	fs.Files["/city/agents/team.toml"] = []byte(`
-[[agents]]
+[[agent]]
 name = "worker"
 dir = "project"
 prompt_template = "prompts/worker.md"
@@ -436,7 +439,7 @@ include = ["agents/team.toml"]
 name = "test"
 `)
 	fs.Files["/city/agents/team.toml"] = []byte(`
-[[agents]]
+[[agent]]
 name = "worker"
 prompt_template = "//prompts/worker.md"
 `)
@@ -460,7 +463,7 @@ include = ["a.toml"]
 name = "test"
 `)
 	fs.Files["/city/a.toml"] = []byte(`
-[[agents]]
+[[agent]]
 name = "worker"
 `)
 	cfg, _, err := LoadWithIncludes(fs, "/city/city.toml")
@@ -762,7 +765,7 @@ func TestLoadWithIncludes_MultipleCityPacks(t *testing.T) {
 name = "alpha"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "agent-a"
 `)
 	fs.Files["/city/packs/beta/pack.toml"] = []byte(`
@@ -770,7 +773,7 @@ name = "agent-a"
 name = "beta"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "agent-b"
 `)
 	fs.Files["/city/city.toml"] = []byte(`
@@ -778,7 +781,7 @@ name = "agent-b"
 name = "test"
 includes = ["packs/alpha", "packs/beta"]
 
-[[agents]]
+[[agent]]
 name = "existing"
 `)
 	cfg, prov, err := LoadWithIncludes(fs, "/city/city.toml")
@@ -786,18 +789,19 @@ name = "existing"
 		t.Fatalf("LoadWithIncludes: %v", err)
 	}
 
-	// Should have 3 agents: agent-a, agent-b (from packs), then existing.
-	if len(cfg.Agents) != 3 {
-		t.Fatalf("got %d agents, want 3", len(cfg.Agents))
+	// Should have 3 explicit agents: agent-a, agent-b (from packs), then existing.
+	explicit := explicitAgents(cfg.Agents)
+	if len(explicit) != 3 {
+		t.Fatalf("got %d explicit agents, want 3", len(explicit))
 	}
-	if cfg.Agents[0].Name != "agent-a" {
-		t.Errorf("first agent = %q, want agent-a", cfg.Agents[0].Name)
+	if explicit[0].Name != "agent-a" {
+		t.Errorf("first agent = %q, want agent-a", explicit[0].Name)
 	}
-	if cfg.Agents[1].Name != "agent-b" {
-		t.Errorf("second agent = %q, want agent-b", cfg.Agents[1].Name)
+	if explicit[1].Name != "agent-b" {
+		t.Errorf("second agent = %q, want agent-b", explicit[1].Name)
 	}
-	if cfg.Agents[2].Name != "existing" {
-		t.Errorf("third agent = %q, want existing", cfg.Agents[2].Name)
+	if explicit[2].Name != "existing" {
+		t.Errorf("third agent = %q, want existing", explicit[2].Name)
 	}
 
 	// Provenance should track city pack agents.
@@ -816,7 +820,7 @@ func TestLoadWithIncludes_MultipleRigPacks(t *testing.T) {
 name = "alpha"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "worker-a"
 `)
 	fs.Files["/city/packs/beta/pack.toml"] = []byte(`
@@ -824,14 +828,14 @@ name = "worker-a"
 name = "beta"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "worker-b"
 `)
 	fs.Files["/city/city.toml"] = []byte(`
 [workspace]
 name = "test"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 
 [[rigs]]
@@ -844,18 +848,19 @@ includes = ["packs/alpha", "packs/beta"]
 		t.Fatalf("LoadWithIncludes: %v", err)
 	}
 
-	// Should have 3 agents: mayor, then worker-a and worker-b from rig packs.
-	if len(cfg.Agents) != 3 {
-		t.Fatalf("got %d agents, want 3", len(cfg.Agents))
+	// Should have 3 explicit agents: mayor, then worker-a and worker-b from rig packs.
+	explicit := explicitAgents(cfg.Agents)
+	if len(explicit) != 3 {
+		t.Fatalf("got %d explicit agents, want 3", len(explicit))
 	}
-	if cfg.Agents[0].Name != "mayor" {
-		t.Errorf("first agent = %q, want mayor", cfg.Agents[0].Name)
+	if explicit[0].Name != "mayor" {
+		t.Errorf("first agent = %q, want mayor", explicit[0].Name)
 	}
-	if cfg.Agents[1].Name != "worker-a" || cfg.Agents[1].Dir != "hw" {
-		t.Errorf("second agent: name=%q dir=%q, want worker-a/hw", cfg.Agents[1].Name, cfg.Agents[1].Dir)
+	if explicit[1].Name != "worker-a" || explicit[1].Dir != "hw" {
+		t.Errorf("second agent: name=%q dir=%q, want worker-a/hw", explicit[1].Name, explicit[1].Dir)
 	}
-	if cfg.Agents[2].Name != "worker-b" || cfg.Agents[2].Dir != "hw" {
-		t.Errorf("third agent: name=%q dir=%q, want worker-b/hw", cfg.Agents[2].Name, cfg.Agents[2].Dir)
+	if explicit[2].Name != "worker-b" || explicit[2].Dir != "hw" {
+		t.Errorf("third agent: name=%q dir=%q, want worker-b/hw", explicit[2].Name, explicit[2].Dir)
 	}
 
 	// Provenance should track rig pack agents.
@@ -874,7 +879,7 @@ func TestLoadWithIncludes_BothSingularAndPluralPacks(t *testing.T) {
 name = "singular"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "from-singular"
 `)
 	fs.Files["/city/packs/plural/pack.toml"] = []byte(`
@@ -882,7 +887,7 @@ name = "from-singular"
 name = "plural"
 schema = 1
 
-[[agents]]
+[[agent]]
 name = "from-plural"
 `)
 	fs.Files["/city/city.toml"] = []byte(`
@@ -895,15 +900,16 @@ includes = ["packs/singular", "packs/plural"]
 		t.Fatalf("LoadWithIncludes: %v", err)
 	}
 
-	// Should have 2 agents: from-singular first, then from-plural.
-	if len(cfg.Agents) != 2 {
-		t.Fatalf("got %d agents, want 2", len(cfg.Agents))
+	// Should have 2 explicit agents: from-singular first, then from-plural.
+	explicit := explicitAgents(cfg.Agents)
+	if len(explicit) != 2 {
+		t.Fatalf("got %d explicit agents, want 2", len(explicit))
 	}
-	if cfg.Agents[0].Name != "from-singular" {
-		t.Errorf("first agent = %q, want from-singular", cfg.Agents[0].Name)
+	if explicit[0].Name != "from-singular" {
+		t.Errorf("first agent = %q, want from-singular", explicit[0].Name)
 	}
-	if cfg.Agents[1].Name != "from-plural" {
-		t.Errorf("second agent = %q, want from-plural", cfg.Agents[1].Name)
+	if explicit[1].Name != "from-plural" {
+		t.Errorf("second agent = %q, want from-plural", explicit[1].Name)
 	}
 }
 
@@ -1083,7 +1089,7 @@ func initBareRepoWithFragment(t *testing.T, fragmentPath, content string) string
 func TestLoadWithIncludes_RemoteInclude(t *testing.T) {
 	// Create a bare git repo with a TOML fragment.
 	fragment := `
-[[agents]]
+[[agent]]
 name = "reviewer"
 `
 	bare := initBareRepoWithFragment(t, "agents.toml", fragment)
@@ -1103,7 +1109,7 @@ include = ["` + remoteInclude + `"]
 [workspace]
 name = "test-remote"
 
-[[agents]]
+[[agent]]
 name = "mayor"
 `
 	cityTomlPath := filepath.Join(cityDir, "city.toml")
@@ -1117,14 +1123,15 @@ name = "mayor"
 	}
 
 	// Root agent + remote fragment agent.
-	if len(cfg.Agents) != 2 {
-		t.Fatalf("len(Agents) = %d, want 2", len(cfg.Agents))
+	explicit := explicitAgents(cfg.Agents)
+	if len(explicit) != 2 {
+		t.Fatalf("len(explicit Agents) = %d, want 2", len(explicit))
 	}
-	if cfg.Agents[0].Name != "mayor" {
-		t.Errorf("Agents[0].Name = %q, want %q", cfg.Agents[0].Name, "mayor")
+	if explicit[0].Name != "mayor" {
+		t.Errorf("Agents[0].Name = %q, want %q", explicit[0].Name, "mayor")
 	}
-	if cfg.Agents[1].Name != "reviewer" {
-		t.Errorf("Agents[1].Name = %q, want %q", cfg.Agents[1].Name, "reviewer")
+	if explicit[1].Name != "reviewer" {
+		t.Errorf("Agents[1].Name = %q, want %q", explicit[1].Name, "reviewer")
 	}
 }
 
@@ -1170,7 +1177,7 @@ session_live = [
     "{{.ConfigDir}}/theme.sh {{.Session}}",
 ]
 
-[[agents]]
+[[agent]]
 name = "designer"
 `)
 
@@ -1180,7 +1187,7 @@ name = "designer"
 name = "global-test"
 includes = ["packs/ui"]
 
-[[agents]]
+[[agent]]
 name = "coder"
 `)
 
@@ -1189,16 +1196,17 @@ name = "coder"
 		t.Fatalf("LoadWithIncludes: %v", err)
 	}
 
-	// Should have 2 agents: designer (from pack) + coder (inline).
-	if len(cfg.Agents) != 2 {
-		t.Fatalf("got %d agents, want 2", len(cfg.Agents))
+	// Should have 2 explicit agents: designer (from pack) + coder (inline).
+	explicit := explicitAgents(cfg.Agents)
+	if len(explicit) != 2 {
+		t.Fatalf("got %d explicit agents, want 2", len(explicit))
 	}
 
 	packDir := filepath.Join(dir, "packs/ui")
 	wantCmd := packDir + "/theme.sh {{.Session}}"
 
-	// Both agents should have the global session_live command.
-	for _, a := range cfg.Agents {
+	// Both explicit agents should have the global session_live command.
+	for _, a := range explicit {
 		if len(a.SessionLive) != 1 {
 			t.Errorf("agent %q: got %d SessionLive, want 1", a.Name, len(a.SessionLive))
 			continue

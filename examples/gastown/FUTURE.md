@@ -83,7 +83,7 @@ Features referenced in prompts/formulas that go beyond individual commands.
 | Feature | Description | Referenced in |
 |---------|-------------|---------------|
 | Custom session naming templates | **NEEDS IMPL:** Gas Town uses `{prefix}-{name}` patterns; gc derives `gc-{city}-{agent}`. Allow configurable naming in city.toml. | Implicit in all session references |
-| Pre-start hooks (`needs_pre_sync`) | **NEEDS IMPL:** Generic `pre_start` hook on `[[agents]]` config — run a shell command before agent session starts. Not gastown-specific. | refinery, polecat, crew role configs |
+| Pre-start hooks (`needs_pre_sync`) | **NEEDS IMPL:** Generic `pre_start` hook on `[[agent]]` config — run a shell command before agent session starts. Not gastown-specific. | refinery, polecat, crew role configs |
 | Prompt template rendering | **NEEDS IMPL:** Go `text/template` rendering of prompt files. Variables from city/rig/agent config. Already primitive #5 in the architecture. | All 8 prompts |
 | Nudge delivery modes | **OPEN:** Re-review whether mail obviates nudge modes. Future discussion. | witness, deacon, refinery, crew |
 | ~~Event channel system~~ | **RESOLVED:** Merged into single primitive below. | refinery-patrol |
