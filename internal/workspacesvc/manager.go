@@ -189,14 +189,18 @@ func (m *Manager) Close() error {
 		if e.inst != nil {
 			targets = append(targets, closeTarget{name: name, inst: e.inst})
 			e.status.ServiceState = "stopping"
+			e.status.State = "stopping"
 			e.status.LocalState = "stopping"
 			e.status.StateReason = "service_closing"
+			e.status.Reason = "service_closing"
 			e.status.UpdatedAt = now
 			continue
 		}
 		e.status.ServiceState = "stopped"
+		e.status.State = "stopped"
 		e.status.LocalState = "stopped"
 		e.status.StateReason = "service_closed"
+		e.status.Reason = "service_closed"
 		e.status.UpdatedAt = now
 	}
 	m.mu.Unlock()
@@ -227,15 +231,19 @@ func (m *Manager) Close() error {
 			// Retain the instance so a subsequent Close() call can retry.
 			e.inst = target.inst
 			e.status.ServiceState = "degraded"
+			e.status.State = "degraded"
 			e.status.LocalState = "close_error"
 			e.status.StateReason = err.Error()
+			e.status.Reason = err.Error()
 			e.status.UpdatedAt = now
 			continue
 		}
 		e.inst = nil
 		e.status.ServiceState = "stopped"
+		e.status.State = "stopped"
 		e.status.LocalState = "stopped"
 		e.status.StateReason = "service_closed"
+		e.status.Reason = "service_closed"
 		e.status.UpdatedAt = now
 	}
 	return firstErr

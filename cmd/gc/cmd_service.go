@@ -200,7 +200,7 @@ func configServiceStatus(svc config.Service) workspacesvc.Status {
 		ServiceState:     "config",
 		State:            "config",
 		LocalState:       "config",
-		PublicationState: svc.PublicationVisibilityOrDefault(),
+		PublicationState: "config",
 		AllowWebSockets:  svc.Publication.AllowWebSockets,
 	}
 }
