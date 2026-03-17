@@ -204,6 +204,10 @@ func deepCopyAgent(src *config.Agent, name, dir string) config.Agent {
 	}
 	if src.Pool != nil {
 		poolCopy := *src.Pool
+		if len(src.Pool.NamepoolNames) > 0 {
+			poolCopy.NamepoolNames = make([]string, len(src.Pool.NamepoolNames))
+			copy(poolCopy.NamepoolNames, src.Pool.NamepoolNames)
+		}
 		dst.Pool = &poolCopy
 	}
 	if src.ReadyDelayMs != nil {
@@ -259,7 +263,7 @@ func discoverPoolInstances(agentName, agentDir string, pool config.PoolConfig,
 		// Bounded pool: static enumeration.
 		var names []string
 		for i := 1; i <= pool.Max; i++ {
-			instanceName := fmt.Sprintf("%s-%d", agentName, i)
+			instanceName := poolInstanceName(agentName, i, pool)
 			qn := instanceName
 			if agentDir != "" {
 				qn = agentDir + "/" + instanceName

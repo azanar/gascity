@@ -106,6 +106,7 @@ session_live = [
 [agent.pool]
 min = 0
 max = 5
+namepool = "namepools/mad-max.txt"
 
 # ── DOG — Infrastructure utility workers. Pool. Themed. ────────────────
 # Overrides maintenance's fallback dog with tmux theme and keybindings.

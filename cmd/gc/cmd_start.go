@@ -810,7 +810,7 @@ func countRunningPoolInstances(agentName, agentDir string, pool config.PoolConfi
 	// Bounded: build the set of expected pool instance session names.
 	expected := make(map[string]bool, pool.Max)
 	for i := 1; i <= pool.Max; i++ {
-		instanceName := fmt.Sprintf("%s-%d", agentName, i)
+		instanceName := poolInstanceName(agentName, i, pool)
 		qualifiedInstance := instanceName
 		if agentDir != "" {
 			qualifiedInstance = agentDir + "/" + instanceName

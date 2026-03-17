@@ -162,6 +162,25 @@ func TestDiscoverPoolInstancesBounded(t *testing.T) {
 	}
 }
 
+func TestDiscoverPoolInstancesBoundedWithNamepool(t *testing.T) {
+	sp := runtime.NewFake()
+	pool := config.PoolConfig{
+		Min:           0,
+		Max:           3,
+		NamepoolNames: []string{"furiosa", "nux", "slit"},
+	}
+	instances := discoverPoolInstances("worker", "myrig", pool, "city", "", sp)
+	if len(instances) != 3 {
+		t.Fatalf("len = %d, want 3", len(instances))
+	}
+	want := []string{"myrig/furiosa", "myrig/nux", "myrig/slit"}
+	for i, got := range instances {
+		if got != want[i] {
+			t.Errorf("instances[%d] = %q, want %q", i, got, want[i])
+		}
+	}
+}
+
 func TestDiscoverPoolInstancesUnlimited(t *testing.T) {
 	sp := runtime.NewFake()
 	// Start some instances that look like pool members.
@@ -185,6 +204,45 @@ func TestCountRunningPoolInstancesUnlimited(t *testing.T) {
 	count := countRunningPoolInstances("worker", "", config.PoolConfig{Min: 0, Max: -1}, "city", "", sp)
 	if count != 2 {
 		t.Errorf("count = %d, want 2", count)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// poolInstanceName tests
+// ---------------------------------------------------------------------------
+
+func TestPoolInstanceName_ThemedName(t *testing.T) {
+	pool := config.PoolConfig{
+		Min:           0,
+		Max:           5,
+		NamepoolNames: []string{"furiosa", "nux", "slit"},
+	}
+	if got := poolInstanceName("polecat", 1, pool); got != "furiosa" {
+		t.Errorf("slot 1: got %q, want %q", got, "furiosa")
+	}
+	if got := poolInstanceName("polecat", 2, pool); got != "nux" {
+		t.Errorf("slot 2: got %q, want %q", got, "nux")
+	}
+	if got := poolInstanceName("polecat", 3, pool); got != "slit" {
+		t.Errorf("slot 3: got %q, want %q", got, "slit")
+	}
+}
+
+func TestPoolInstanceName_OverflowFallback(t *testing.T) {
+	pool := config.PoolConfig{
+		Min:           0,
+		Max:           5,
+		NamepoolNames: []string{"furiosa", "nux"},
+	}
+	if got := poolInstanceName("polecat", 3, pool); got != "polecat-3" {
+		t.Errorf("slot 3 (overflow): got %q, want %q", got, "polecat-3")
+	}
+}
+
+func TestPoolInstanceName_EmptyNamepool(t *testing.T) {
+	pool := config.PoolConfig{Min: 0, Max: 5}
+	if got := poolInstanceName("polecat", 1, pool); got != "polecat-1" {
+		t.Errorf("slot 1 (no namepool): got %q, want %q", got, "polecat-1")
 	}
 }
 

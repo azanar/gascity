@@ -25,7 +25,6 @@ gc [flags]
 | [gc config](#gc-config) | Inspect and validate city configuration |
 | [gc converge](#gc-converge) | Manage convergence loops (bounded iterative refinement) |
 | [gc convoy](#gc-convoy) | Manage convoys (batch work tracking) |
-| [gc daemon](#gc-daemon) | Manage the city daemon (background controller) |
 | [gc dashboard](#gc-dashboard) | Web dashboard for monitoring the city |
 | [gc doctor](#gc-doctor) | Check workspace health |
 | [gc event](#gc-event) | Event operations |
@@ -49,7 +48,7 @@ gc [flags]
 | [gc session](#gc-session) | Manage interactive chat sessions |
 | [gc skill](#gc-skill) | Show command reference for a topic |
 | [gc sling](#gc-sling) | Route work to an agent or pool |
-| [gc start](#gc-start) | Start the city (auto-initializes if needed) |
+| [gc start](#gc-start) | Start the city under the machine-wide supervisor |
 | [gc status](#gc-status) | Show city-wide status overview |
 | [gc stop](#gc-stop) | Stop all agent sessions in the city |
 | [gc supervisor](#gc-supervisor) | Manage the machine-wide supervisor |
@@ -536,123 +535,6 @@ Useful for identifying bottlenecks in convoy processing.
 
 ```
 gc convoy stranded
-```
-
-## gc daemon
-
-Manage the city daemon — a persistent background controller.
-
-The daemon runs "gc start --foreground" as a background process,
-continuously reconciling agent state. It can be managed as a system
-service via launchd (macOS) or systemd (Linux).
-
-```
-gc daemon
-```
-
-| Subcommand | Description |
-|------------|-------------|
-| [gc daemon install](#gc-daemon-install) | Install the daemon as a platform service (launchd/systemd) |
-| [gc daemon logs](#gc-daemon-logs) | Tail the daemon log file |
-| [gc daemon run](#gc-daemon-run) | Run the controller in the foreground (with log file) |
-| [gc daemon start](#gc-daemon-start) | Start the daemon in the background |
-| [gc daemon status](#gc-daemon-status) | Show daemon status (PID, uptime) |
-| [gc daemon stop](#gc-daemon-stop) | Stop the running daemon |
-| [gc daemon uninstall](#gc-daemon-uninstall) | Remove the platform service (launchd/systemd) |
-
-## gc daemon install
-
-Install the daemon as a platform service that starts on login.
-
-Generates and loads a launchd plist (macOS) or systemd user unit
-(Linux) that runs "gc daemon run" automatically.
-
-```
-gc daemon install [path]
-```
-
-## gc daemon logs
-
-Tail the daemon log file (.gc/daemon.log).
-
-Shows recent log output with optional follow mode. Equivalent to
-"tail -n 50 .gc/daemon.log" (or "tail -f" with --follow).
-
-```
-gc daemon logs [path] [flags]
-```
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `-f`, `--follow` | bool |  | follow log output |
-| `-n`, `--lines` | int | `50` | number of lines to show |
-
-## gc daemon run
-
-Run the controller in the foreground with log file output.
-
-Starts the persistent reconciliation loop, writing output to both
-stdout and .gc/daemon.log. This is the command that "gc daemon start"
-forks in the background.
-
-```
-gc daemon run [path] [flags]
-```
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `-f`, `--file` | stringArray |  | additional config files to layer (can be repeated) |
-| `--no-strict` | bool |  | disable strict config collision checking (strict is on by default) |
-
-## gc daemon start
-
-Fork the daemon as a background process.
-
-Spawns "gc daemon run" as a detached child process and verifies it
-acquired the controller lock. Only one daemon can run per city.
-
-```
-gc daemon start [path]
-```
-
-**Example:**
-
-```
-gc daemon start
-  gc daemon start ~/my-city
-```
-
-## gc daemon status
-
-Show whether the daemon is running, its PID, and uptime.
-
-Reads the PID file and verifies the process is alive. Derives uptime
-from the most recent controller.started event in the event log.
-
-```
-gc daemon status [path]
-```
-
-## gc daemon stop
-
-Signal the running daemon to shut down gracefully.
-
-Connects to the controller's unix socket and sends a stop command.
-The daemon performs graceful agent shutdown before exiting.
-
-```
-gc daemon stop [path]
-```
-
-## gc daemon uninstall
-
-Remove the platform service and stop the daemon.
-
-Unloads and deletes the launchd plist (macOS) or systemd unit (Linux)
-created by "gc daemon install".
-
-```
-gc daemon uninstall [path]
 ```
 
 ## gc dashboard
@@ -1258,8 +1140,7 @@ Register a city directory with the machine-wide supervisor.
 
 If no path is given, registers the current city (discovered from cwd).
 Registration is idempotent — registering the same city twice is a no-op.
-City names (derived from directory basename or workspace.name) must be
-unique across all registered cities.
+The supervisor is started if needed and immediately reconciles the city.
 
 ```
 gc register [path]
@@ -1267,11 +1148,11 @@ gc register [path]
 
 ## gc restart
 
-Restart the city by stopping all agents then starting them again.
+Restart the city by stopping it then starting it again.
 
-Equivalent to running "gc stop" followed by "gc start". Performs a
-full one-shot reconciliation after stopping, which re-reads city.toml
-and starts all configured agents.
+Equivalent to running "gc stop" followed by "gc start". Under supervisor
+mode this unregisters the city, then re-registers it and triggers an
+immediate reconcile.
 
 ```
 gc restart [path]
@@ -1641,11 +1522,11 @@ Send text input to a running agent session via the runtime provider.
 The message is delivered as text content to the session's input. This is
 equivalent to typing the message into the session's terminal.
 
-Resolves the agent name from city.toml configuration to find the
-corresponding tmux session. Multi-word messages are joined automatically.
+Accepts a session ID, session name, or agent name. Multi-word messages are
+joined automatically.
 
 ```
-gc session nudge <agent-name> <message...> [flags]
+gc session nudge <id-or-name> <message...> [flags]
 ```
 
 | Flag | Type | Default | Description |
@@ -1798,12 +1679,12 @@ gc sling [target] <bead-or-formula-or-text> [flags]
 
 ## gc start
 
-Start the city by launching all configured agent sessions.
+Start the city under the machine-wide supervisor.
 
-Auto-initializes the city if no .gc/ directory exists. Fetches remote
-packs, resolves providers, installs hooks, and starts agent sessions
-via one-shot reconciliation. Use --foreground for a persistent controller
-that continuously reconciles agent state.
+Requires an existing city bootstrapped by "gc init". Fetches remote
+packs as needed, registers the city with the machine-wide supervisor,
+ensures the supervisor is running, and triggers immediate reconciliation.
+Use "gc supervisor run" for foreground operation.
 
 ```
 gc start [path] [flags]
@@ -1814,16 +1695,13 @@ gc start [path] [flags]
 ```
 gc start
   gc start ~/my-city
-  gc start --foreground
-  gc start -f overlay.toml --no-strict
+  gc start --dry-run
+  gc supervisor run
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `-n`, `--dry-run` | bool |  | preview what agents would start without starting them |
-| `-f`, `--file` | stringArray |  | additional config files to layer (can be repeated) |
-| `--foreground` | bool |  | run as a persistent controller (reconcile loop) |
-| `--no-strict` | bool |  | disable strict config collision checking (strict is on by default) |
 
 ## gc status
 
@@ -1853,10 +1731,11 @@ gc stop [path]
 
 ## gc supervisor
 
-Manage the machine-wide supervisor daemon.
+Manage the machine-wide supervisor.
 
 The supervisor manages all registered cities from a single process,
-hosting a unified API server. Use "gc register" to add cities.
+hosting a unified API server. Use "gc init", "gc start", or "gc register"
+to add cities.
 
 ```
 gc supervisor
@@ -1864,10 +1743,38 @@ gc supervisor
 
 | Subcommand | Description |
 |------------|-------------|
+| [gc supervisor install](#gc-supervisor-install) | Install the supervisor as a platform service |
+| [gc supervisor logs](#gc-supervisor-logs) | Tail the supervisor log file |
 | [gc supervisor reload](#gc-supervisor-reload) | Trigger immediate reconciliation of all cities |
-| [gc supervisor start](#gc-supervisor-start) | Start the machine-wide supervisor (foreground) |
+| [gc supervisor run](#gc-supervisor-run) | Run the machine-wide supervisor in the foreground |
+| [gc supervisor start](#gc-supervisor-start) | Start the machine-wide supervisor in the background |
 | [gc supervisor status](#gc-supervisor-status) | Check if the supervisor is running |
 | [gc supervisor stop](#gc-supervisor-stop) | Stop the machine-wide supervisor |
+| [gc supervisor uninstall](#gc-supervisor-uninstall) | Remove the platform service |
+
+## gc supervisor install
+
+Install the machine-wide supervisor as a platform service that
+starts on login.
+
+```
+gc supervisor install
+```
+
+## gc supervisor logs
+
+Tail the machine-wide supervisor log file.
+
+Shows recent log output from background and service-managed supervisor runs.
+
+```
+gc supervisor logs [flags]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-f`, `--follow` | bool |  | follow log output |
+| `-n`, `--lines` | int | `50` | number of lines to show |
 
 ## gc supervisor reload
 
@@ -1880,13 +1787,23 @@ change and restart it without waiting for the next patrol tick.
 gc supervisor reload
 ```
 
+## gc supervisor run
+
+Run the machine-wide supervisor in the foreground.
+
+This is the canonical long-running control loop. It reads ~/.gc/cities.toml
+for registered cities, manages them from one process, and hosts the shared
+API server.
+
+```
+gc supervisor run
+```
+
 ## gc supervisor start
 
-Start the machine-wide supervisor in the foreground.
+Start the machine-wide supervisor in the background.
 
-The supervisor reads ~/.gc/cities.toml for registered cities and
-~/.gc/supervisor.toml for configuration. It starts a CityRuntime
-for each registered city and hosts a single API server.
+This forks "gc supervisor run", verifies it became ready, and returns.
 
 ```
 gc supervisor start
@@ -1908,6 +1825,14 @@ Stop the running machine-wide supervisor and all its cities.
 gc supervisor stop
 ```
 
+## gc supervisor uninstall
+
+Remove the platform service and stop the machine-wide supervisor.
+
+```
+gc supervisor uninstall
+```
+
 ## gc suspend
 
 Suspends the city by setting workspace.suspended = true in city.toml.
@@ -1927,6 +1852,7 @@ gc suspend [path]
 Remove a city from the machine-wide supervisor registry.
 
 If no path is given, unregisters the current city (discovered from cwd).
+If the supervisor is running, it immediately stops managing the city.
 
 ```
 gc unregister [path]

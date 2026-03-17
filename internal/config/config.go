@@ -963,6 +963,15 @@ type PoolConfig struct {
 	// OnBoot is a shell command run once at controller startup for each pool.
 	// Default: unclaims all in_progress beads labeled for this pool.
 	OnBoot string `toml:"on_boot,omitempty"`
+	// Namepool is the path to a plain text file with one name per line.
+	// When set, pool instances use names from the file instead of numeric
+	// suffixes (e.g., "furiosa" instead of "polecat-1"). The path is
+	// resolved via adjustFragmentPath (relative to pack dir, absolute, or
+	// "//" for city-root-relative). Requires a bounded pool (max > 0).
+	Namepool string `toml:"namepool,omitempty"`
+	// NamepoolNames holds names loaded from the Namepool file at config load
+	// time. Not serialized to TOML.
+	NamepoolNames []string `toml:"-"`
 }
 
 // DrainTimeoutDuration returns the drain timeout as a time.Duration.

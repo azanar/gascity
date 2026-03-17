@@ -49,6 +49,16 @@ func ValidateSemantics(cfg *City, source string) []string {
 		}
 	}
 
+	// Check namepool on unlimited pools (discovery uses prefix matching,
+	// which won't find themed names).
+	for _, a := range cfg.Agents {
+		if a.Pool != nil && a.Pool.Namepool != "" && a.Pool.Max < 0 {
+			warnings = append(warnings, fmt.Sprintf(
+				"%s: agent %q: namepool requires a bounded pool (max > 0); unlimited pools use prefix discovery which cannot find themed names",
+				source, a.QualifiedName()))
+		}
+	}
+
 	// Check PromptMode on city-defined providers.
 	for name, spec := range cfg.Providers {
 		switch spec.PromptMode {

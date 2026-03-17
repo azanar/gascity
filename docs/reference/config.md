@@ -339,6 +339,7 @@ PoolConfig defines elastic pool parameters for an agent.
 | `drain_timeout` | string |  | `5m` | DrainTimeout is the maximum time to wait for a pool instance to finish its current work before force-killing it. Duration string (e.g., "5m", "30m", "1h"). Defaults to "5m". |
 | `on_death` | string |  |  | OnDeath is a shell command run when a pool instance dies. Default: unclaims in_progress beads assigned to the dead instance. |
 | `on_boot` | string |  |  | OnBoot is a shell command run once at controller startup for each pool. Default: unclaims all in_progress beads labeled for this pool. |
+| `namepool` | string |  |  | Namepool is the path to a plain text file with one name per line. When set, pool instances use names from the file instead of numeric suffixes (e.g., "furiosa" instead of "polecat-1"). The path is resolved via adjustFragmentPath (relative to pack dir, absolute, or "//" for city-root-relative). Requires a bounded pool (max &gt; 0). |
 
 ## PoolOverride
 

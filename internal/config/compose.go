@@ -174,6 +174,9 @@ func LoadWithIncludes(fs fsys.FS, path string, extraIncludes ...string) (*City, 
 	// Validate cross-entity semantic constraints.
 	prov.Warnings = append(prov.Warnings, ValidateSemantics(root, path)...)
 
+	// Load namepool files for pool agents.
+	loadNamepools(fs, root, cityRoot)
+
 	return root, prov, nil
 }
 
@@ -488,6 +491,29 @@ func adjustAgentPaths(agents []Agent, fragDir, cityRoot string) {
 			agents[i].OverlayDir = adjustFragmentPath(
 				agents[i].OverlayDir, fragDir, cityRoot)
 		}
+		if agents[i].Pool != nil && agents[i].Pool.Namepool != "" {
+			agents[i].Pool.Namepool = adjustFragmentPath(
+				agents[i].Pool.Namepool, fragDir, cityRoot)
+		}
+	}
+}
+
+// loadNamepools loads namepool files for all pool agents with a configured
+// namepool path. Called after all path adjustment and composition is complete.
+func loadNamepools(fs fsys.FS, cfg *City, cityRoot string) {
+	for i := range cfg.Agents {
+		if cfg.Agents[i].Pool == nil || cfg.Agents[i].Pool.Namepool == "" {
+			continue
+		}
+		path := cfg.Agents[i].Pool.Namepool
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(cityRoot, path)
+		}
+		names, err := LoadNamepool(fs, path)
+		if err != nil {
+			continue // silent fallback to numeric names
+		}
+		cfg.Agents[i].Pool.NamepoolNames = names
 	}
 }
 

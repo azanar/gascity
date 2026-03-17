@@ -137,12 +137,11 @@ func buildDesiredState(
 		}
 		for slot := 1; slot <= pr.desired; slot++ {
 			// If single-instance (max == 1), use bare name (no suffix).
-			// If multi-instance (max > 1 or unlimited), use {name}-{N} suffix.
-			// This matches the old poolAgents behavior and preserves session
-			// name continuity for singleton pools.
+			// If multi-instance (max > 1 or unlimited), use themed name
+			// (from namepool) or {name}-{N} suffix.
 			name := cfg.Agents[pw.agentIdx].Name
 			if pw.pool.IsMultiInstance() {
-				name = fmt.Sprintf("%s-%d", cfg.Agents[pw.agentIdx].Name, slot)
+				name = poolInstanceName(cfg.Agents[pw.agentIdx].Name, slot, pw.pool)
 			}
 			qualifiedInstance := name
 			if cfg.Agents[pw.agentIdx].Dir != "" {
@@ -252,4 +251,14 @@ func installAgentSideEffects(bp *agentBuildParams, cfgAgent *config.Agent, tp Te
 			autoSP.RouteACP(tp.SessionName)
 		}
 	}
+}
+
+// poolInstanceName returns the name for pool slot N.
+// If the pool has namepool names and the slot is in range, uses the themed
+// name. Otherwise falls back to "{base}-{slot}".
+func poolInstanceName(base string, slot int, pool config.PoolConfig) string {
+	if slot >= 1 && slot <= len(pool.NamepoolNames) {
+		return pool.NamepoolNames[slot-1]
+	}
+	return fmt.Sprintf("%s-%d", base, slot)
 }

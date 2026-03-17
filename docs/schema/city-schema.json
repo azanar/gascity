@@ -1108,6 +1108,10 @@
         "on_boot": {
           "type": "string",
           "description": "OnBoot is a shell command run once at controller startup for each pool.\nDefault: unclaims all in_progress beads labeled for this pool."
+        },
+        "namepool": {
+          "type": "string",
+          "description": "Namepool is the path to a plain text file with one name per line.\nWhen set, pool instances use names from the file instead of numeric\nsuffixes (e.g., \"furiosa\" instead of \"polecat-1\"). The path is\nresolved via adjustFragmentPath (relative to pack dir, absolute, or\n\"//\" for city-root-relative). Requires a bounded pool (max \u003e 0)."
         }
       },
       "additionalProperties": false,
