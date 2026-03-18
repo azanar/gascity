@@ -307,6 +307,15 @@ func doStartStandalone(args []string, controllerMode bool, stdout, stderr io.Wri
 		fmt.Fprintf(stderr, "gc start: runtime scaffold: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
 	}
+	// Materialize gastown packs before config load if the city references them.
+	// This covers the case where gc init wrote city.toml but failed before
+	// MaterializeGastownPacks ran (e.g., provider readiness failure).
+	if cityUsesBuiltInGastownPackFS(fsys.OSFS{}, cityPath) {
+		if err := MaterializeGastownPacks(cityPath); err != nil {
+			fmt.Fprintf(stderr, "gc start: materializing gastown packs: %v\n", err) //nolint:errcheck // best-effort stderr
+		}
+	}
+
 	// Auto-fetch remote packs before full config load.
 	if quickCfg, qErr := config.Load(fsys.OSFS{}, filepath.Join(cityPath, "city.toml")); qErr == nil && len(quickCfg.Packs) > 0 {
 		if fErr := config.FetchPacks(quickCfg.Packs, cityPath); fErr != nil {
