@@ -43,8 +43,9 @@ brews:
     caveats: |
       Dependencies (tmux, jq, git, dolt, flock) are installed automatically.
 
-      To start the Gas City supervisor (auto-registers as a login service):
-        gc start <city-path>
+      Get started:
+        gc init <city-path>      # create a new city
+        gc start <city-path>     # start an existing city
     test: |
       assert_match version.to_s, shell_output("#{bin}/gc version")
 
