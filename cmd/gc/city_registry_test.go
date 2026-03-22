@@ -252,7 +252,7 @@ func TestCityRegistrySnapshotImmutability(t *testing.T) {
 	}
 }
 
-func TestCityRegistryConcurrentReadWrite(t *testing.T) {
+func TestCityRegistryConcurrentReadWrite(_ *testing.T) {
 	reg := newCityRegistry()
 
 	// Pre-populate.

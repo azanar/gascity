@@ -30,11 +30,11 @@ type StateFetcher interface {
 	FetchRunning(ctx context.Context) (map[string]bool, error)
 }
 
-// TmuxStateCache caches the set of running tmux sessions to avoid
+// StateCache caches the set of running tmux sessions to avoid
 // spawning N subprocess calls per status check. Concurrent callers
 // are coalesced via singleflight so at most one tmux list-sessions
 // subprocess runs at a time.
-type TmuxStateCache struct {
+type StateCache struct {
 	mu        sync.RWMutex
 	sessions  map[string]bool
 	fetchedAt time.Time
@@ -46,10 +46,10 @@ type TmuxStateCache struct {
 	fetcher   StateFetcher
 }
 
-// NewTmuxStateCache creates a new cache with the given fetcher and TTL.
+// NewStateCache creates a new cache with the given fetcher and TTL.
 // staleTTL defaults to 30s.
-func NewTmuxStateCache(fetcher StateFetcher, ttl time.Duration) *TmuxStateCache {
-	return &TmuxStateCache{
+func NewStateCache(fetcher StateFetcher, ttl time.Duration) *StateCache {
+	return &StateCache{
 		fetcher:  fetcher,
 		ttl:      ttl,
 		staleTTL: defaultStaleTTL,
@@ -59,7 +59,7 @@ func NewTmuxStateCache(fetcher StateFetcher, ttl time.Duration) *TmuxStateCache 
 // IsRunning reports whether the named session exists in the cached set.
 // If the cache is stale, a refresh is triggered (coalesced via singleflight).
 // On refresh failure, the last-known-good cache is preserved up to staleTTL.
-func (c *TmuxStateCache) IsRunning(name string) bool {
+func (c *StateCache) IsRunning(name string) bool {
 	c.mu.RLock()
 	sessions := c.sessions
 	fetchedAt := c.fetchedAt
@@ -92,7 +92,7 @@ func (c *TmuxStateCache) IsRunning(name string) bool {
 // Invalidate marks the cache as dirty, forcing the next IsRunning call
 // to trigger a refresh. The session data and fetchedAt are preserved as
 // last-known-good until the refresh completes — even if the refresh fails.
-func (c *TmuxStateCache) Invalidate() {
+func (c *StateCache) Invalidate() {
 	c.mu.Lock()
 	c.dirty = true
 	c.mu.Unlock()
@@ -100,7 +100,7 @@ func (c *TmuxStateCache) Invalidate() {
 
 // refresh executes a single coalesced fetch. If the fetch fails, the
 // last-known-good cache is preserved and the error is logged.
-func (c *TmuxStateCache) refresh() {
+func (c *StateCache) refresh() {
 	_, _, _ = c.sf.Do("refresh", func() (interface{}, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
 		defer cancel()

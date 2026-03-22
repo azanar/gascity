@@ -20,7 +20,7 @@ import (
 type Provider struct {
 	tm       *Tmux
 	cfg      Config
-	cache    *TmuxStateCache
+	cache    *StateCache
 	mu       sync.Mutex
 	workDirs map[string]string // session name → workDir (for CopyTo)
 }
@@ -41,7 +41,7 @@ func NewProviderWithConfig(cfg Config) *Provider {
 	return &Provider{
 		tm:       tm,
 		cfg:      cfg,
-		cache:    NewTmuxStateCache(&tmuxFetcher{tm: tm}, ttl),
+		cache:    NewStateCache(&tmuxFetcher{tm: tm}, ttl),
 		workDirs: make(map[string]string),
 	}
 }

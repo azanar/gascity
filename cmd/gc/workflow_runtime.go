@@ -124,7 +124,7 @@ func workflowTracef(format string, args ...any) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer f.Close()                                                                                //nolint:errcheck // best-effort trace log
 	fmt.Fprintf(f, "%s %s\n", time.Now().UTC().Format(time.RFC3339), fmt.Sprintf(format, args...)) //nolint:errcheck
 }
 

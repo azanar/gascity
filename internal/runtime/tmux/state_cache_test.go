@@ -53,7 +53,7 @@ func TestStateCache_FreshCacheReturnsCorrectState(t *testing.T) {
 	f := &mockFetcher{
 		sessions: map[string]bool{"agent-1": true, "agent-2": true},
 	}
-	cache := NewTmuxStateCache(f, 2*time.Second)
+	cache := NewStateCache(f, 2*time.Second)
 
 	if !cache.IsRunning("agent-1") {
 		t.Error("expected agent-1 to be running")
@@ -77,7 +77,7 @@ func TestStateCache_StaleCacheTriggersRefresh(t *testing.T) {
 		sessions: map[string]bool{"agent-1": true},
 	}
 	ttl := 50 * time.Millisecond
-	cache := NewTmuxStateCache(f, ttl)
+	cache := NewStateCache(f, ttl)
 
 	// Prime the cache.
 	if !cache.IsRunning("agent-1") {
@@ -105,7 +105,7 @@ func TestStateCache_ConcurrentCallersCoalesceIntoOneFetch(t *testing.T) {
 		sessions: map[string]bool{"agent-1": true},
 		delay:    100 * time.Millisecond,
 	}
-	cache := NewTmuxStateCache(f, 2*time.Second)
+	cache := NewStateCache(f, 2*time.Second)
 
 	var wg sync.WaitGroup
 	results := make([]bool, 20)
@@ -136,7 +136,7 @@ func TestStateCache_RefreshFailurePreservesLastKnownGood(t *testing.T) {
 		sessions: map[string]bool{"agent-1": true},
 	}
 	ttl := 50 * time.Millisecond
-	cache := NewTmuxStateCache(f, ttl)
+	cache := NewStateCache(f, ttl)
 
 	// Prime the cache.
 	if !cache.IsRunning("agent-1") {
@@ -165,7 +165,7 @@ func TestStateCache_InvalidateForcesNextReadToRefresh(t *testing.T) {
 	f := &mockFetcher{
 		sessions: map[string]bool{"agent-1": true},
 	}
-	cache := NewTmuxStateCache(f, 10*time.Second) // long TTL
+	cache := NewStateCache(f, 10*time.Second) // long TTL
 
 	// Prime the cache.
 	if !cache.IsRunning("agent-1") {
@@ -196,7 +196,7 @@ func TestStateCache_StaleTTLReturnsFalseForAllSessions(t *testing.T) {
 		sessions: map[string]bool{"agent-1": true},
 	}
 	ttl := 50 * time.Millisecond
-	cache := NewTmuxStateCache(f, ttl)
+	cache := NewStateCache(f, ttl)
 	cache.staleTTL = 100 * time.Millisecond // short staleTTL for testing
 
 	// Prime the cache.
@@ -220,7 +220,7 @@ func TestStateCache_EmptySessionsMap(t *testing.T) {
 	f := &mockFetcher{
 		sessions: map[string]bool{},
 	}
-	cache := NewTmuxStateCache(f, 2*time.Second)
+	cache := NewStateCache(f, 2*time.Second)
 
 	if cache.IsRunning("anything") {
 		t.Error("expected false for any session when tmux has no sessions")
@@ -232,20 +232,20 @@ func TestStateCache_NilSessionsMap(t *testing.T) {
 	f := &mockFetcher{
 		sessions: nil,
 	}
-	cache := NewTmuxStateCache(f, 2*time.Second)
+	cache := NewStateCache(f, 2*time.Second)
 
 	if cache.IsRunning("anything") {
 		t.Error("expected false for any session when fetch returns nil map")
 	}
 }
 
-func TestStateCache_ConcurrentInvalidateAndRead(t *testing.T) {
+func TestStateCache_ConcurrentInvalidateAndRead(_ *testing.T) {
 	var fetchCount atomic.Int64
 	f := &mockFetcher{
 		sessions: map[string]bool{"agent-1": true},
 	}
 
-	cache := NewTmuxStateCache(f, 50*time.Millisecond)
+	cache := NewStateCache(f, 50*time.Millisecond)
 
 	// Prime.
 	cache.IsRunning("agent-1")

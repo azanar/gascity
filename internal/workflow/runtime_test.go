@@ -2401,11 +2401,11 @@ func newSimpleRalphLoopInStore(t *testing.T, store beads.Store, stepID, checkPat
 	return logical, run1, check1
 }
 
-func newSimpleRalphLoop(t *testing.T, stepID, checkPath string, maxAttempts int) (*beads.MemStore, beads.Bead, beads.Bead, beads.Bead) {
+func newSimpleRalphLoop(t *testing.T, _stepID, checkPath string, maxAttempts int) (*beads.MemStore, beads.Bead, beads.Bead, beads.Bead) {
 	t.Helper()
 
 	store := beads.NewMemStore()
-	logical, run1, check1 := newSimpleRalphLoopInStore(t, store, stepID, checkPath, maxAttempts)
+	logical, run1, check1 := newSimpleRalphLoopInStore(t, store, _stepID, checkPath, maxAttempts)
 	return store, logical, run1, check1
 }
 
@@ -2468,10 +2468,10 @@ func mustCreateWorkflowBead(t *testing.T, store beads.Store, bead beads.Bead) be
 	return created
 }
 
-func mustDepAdd(t *testing.T, store beads.Store, issueID, dependsOnID, depType string) {
+func mustDepAdd(t *testing.T, store beads.Store, issueID, dependsOnID, _depType string) {
 	t.Helper()
-	if err := store.DepAdd(issueID, dependsOnID, depType); err != nil {
-		t.Fatalf("dep add %s --%s--> %s: %v", issueID, depType, dependsOnID, err)
+	if err := store.DepAdd(issueID, dependsOnID, _depType); err != nil {
+		t.Fatalf("dep add %s --%s--> %s: %v", issueID, _depType, dependsOnID, err)
 	}
 }
 
@@ -2510,7 +2510,7 @@ type ralphPassOrderStore struct {
 
 func (s *ralphPassOrderStore) Update(id string, opts beads.UpdateOpts) error {
 	if opts.Status != nil && *opts.Status == "closed" && id == s.logicalID {
-		check, err := s.MemStore.Get(s.checkID)
+		check, err := s.Get(s.checkID)
 		if err != nil {
 			return err
 		}
@@ -2534,7 +2534,7 @@ func (s *assigneeVisibilityOnCreateStore) Create(bead beads.Bead) (beads.Bead, e
 	if created.Metadata["gc.attempt"] != "2" || bead.Assignee == "" {
 		return created, nil
 	}
-	assigned, err := s.MemStore.ListByAssignee(bead.Assignee, "open", 0)
+	assigned, err := s.ListByAssignee(bead.Assignee, "open", 0)
 	if err != nil {
 		return created, err
 	}
