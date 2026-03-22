@@ -991,6 +991,54 @@ func TestRename(t *testing.T) {
 	}
 }
 
+func TestUpdatePresentationSyncsRuntimeAlias(t *testing.T) {
+	store := beads.NewMemStore()
+	sp := runtime.NewFake()
+	mgr := NewManager(store, sp)
+
+	info, err := mgr.CreateAliasedNamedWithTransport(
+		context.Background(),
+		"old-alias",
+		"",
+		"helper",
+		"old title",
+		"echo test",
+		"/tmp",
+		"test",
+		"",
+		nil,
+		ProviderResume{},
+		runtime.Config{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nextAlias := "new-alias"
+	if err := mgr.UpdatePresentation(info.ID, nil, &nextAlias); err != nil {
+		t.Fatalf("UpdatePresentation(alias): %v", err)
+	}
+
+	got, err := sp.GetMeta(info.SessionName, "GC_ALIAS")
+	if err != nil {
+		t.Fatalf("GetMeta(GC_ALIAS): %v", err)
+	}
+	if got != nextAlias {
+		t.Fatalf("GC_ALIAS = %q, want %q", got, nextAlias)
+	}
+
+	bead, err := store.Get(info.ID)
+	if err != nil {
+		t.Fatalf("Get(bead): %v", err)
+	}
+	if bead.Metadata["alias"] != nextAlias {
+		t.Fatalf("alias metadata = %q, want %q", bead.Metadata["alias"], nextAlias)
+	}
+	if bead.Metadata["alias_history"] != "old-alias" {
+		t.Fatalf("alias_history = %q, want old-alias", bead.Metadata["alias_history"])
+	}
+}
+
 func TestRenameNonSessionBead(t *testing.T) {
 	store := beads.NewMemStore()
 	sp := runtime.NewFake()
