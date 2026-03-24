@@ -1155,7 +1155,7 @@ func TestPoolRoundTrip(t *testing.T) {
 func TestEffectiveWorkQueryDefault(t *testing.T) {
 	a := Agent{Name: "mayor"}
 	got := a.EffectiveWorkQuery()
-	want := `bd ready --assignee="$GC_SESSION_NAME" --json --limit=1 2>/dev/null`
+	want := `bd ready --json --limit=0 2>/dev/null | jq -c --arg a "$GC_SESSION_NAME" 'if type == "array" then map(select(.assignee == $a)) else (if .assignee == $a then [.] else [] end) end | .[:1]' 2>/dev/null`
 	if got != want {
 		t.Errorf("EffectiveWorkQuery() = %q, want %q", got, want)
 	}
@@ -1173,7 +1173,7 @@ func TestEffectiveWorkQueryCustom(t *testing.T) {
 func TestEffectiveWorkQueryWithDir(t *testing.T) {
 	a := Agent{Name: "polecat", Dir: "hello-world"}
 	got := a.EffectiveWorkQuery()
-	want := `bd ready --assignee="$GC_SESSION_NAME" --json --limit=1 2>/dev/null`
+	want := `bd ready --json --limit=0 2>/dev/null | jq -c --arg a "$GC_SESSION_NAME" 'if type == "array" then map(select(.assignee == $a)) else (if .assignee == $a then [.] else [] end) end | .[:1]' 2>/dev/null`
 	if got != want {
 		t.Errorf("EffectiveWorkQuery() = %q, want %q", got, want)
 	}
@@ -1182,7 +1182,7 @@ func TestEffectiveWorkQueryWithDir(t *testing.T) {
 func TestEffectiveWorkQueryPoolDefault(t *testing.T) {
 	a := Agent{Name: "polecat", Dir: "hello-world", Pool: &PoolConfig{Min: 1, Max: 3}}
 	got := a.EffectiveWorkQuery()
-	want := "bd ready --label=pool:hello-world/polecat --json --limit=1 2>/dev/null"
+	want := "bd ready --label=pool:hello-world/polecat --limit=1"
 	if got != want {
 		t.Errorf("EffectiveWorkQuery() = %q, want %q", got, want)
 	}
@@ -1234,7 +1234,7 @@ func TestEffectiveWorkQueryPoolNameOverride(t *testing.T) {
 		PoolName: "hello-world/dog",
 	}
 	got := a.EffectiveWorkQuery()
-	want := "bd ready --label=pool:hello-world/dog --json --limit=1 2>/dev/null"
+	want := "bd ready --label=pool:hello-world/dog --limit=1"
 	if got != want {
 		t.Errorf("EffectiveWorkQuery() = %q, want %q", got, want)
 	}
@@ -1244,7 +1244,7 @@ func TestEffectiveWorkQueryPoolNoPoolName(t *testing.T) {
 	// Pool template (no PoolName) should use QualifiedName as before.
 	a := Agent{Name: "dog", Dir: "hello-world", Pool: &PoolConfig{Min: 1, Max: 3}}
 	got := a.EffectiveWorkQuery()
-	want := "bd ready --label=pool:hello-world/dog --json --limit=1 2>/dev/null"
+	want := "bd ready --label=pool:hello-world/dog --limit=1"
 	if got != want {
 		t.Errorf("EffectiveWorkQuery() = %q, want %q", got, want)
 	}

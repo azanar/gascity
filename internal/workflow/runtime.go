@@ -23,17 +23,9 @@ type ProcessOptions struct {
 	CityPath           string
 	FormulaSearchPaths []string
 	PrepareFragment    func(*formula.FragmentRecipe, beads.Bead) error
-	RecycleSession     func(beads.Bead) error
 }
 
-var (
-	errFinalizePending  = errors.New("workflow finalize pending")
-	errScopeBodyMissing = errors.New("scope body missing")
-)
-
-// ErrControlPending reports that a control bead is not yet processable but
-// should be retried later.
-var ErrControlPending = errors.New("workflow control pending")
+var errFinalizePending = errors.New("workflow finalize pending")
 
 // ProcessControl executes a graph.v2 control bead.
 //
@@ -52,8 +44,6 @@ func ProcessControl(store beads.Store, bead beads.Bead, opts ProcessOptions) (Co
 	switch bead.Metadata["gc.kind"] {
 	case "check":
 		return processRalphCheck(store, bead, opts)
-	case "retry-eval":
-		return processRetryEval(store, bead, opts)
 	case "fanout":
 		return processFanout(store, bead, opts)
 	case "scope-check":
@@ -85,42 +75,7 @@ func processScopeCheck(store beads.Store, bead beads.Bead) (ControlResult, error
 	}
 	body, err := resolveScopeBody(store, rootID, scopeRef)
 	if err != nil {
-		if errors.Is(err, errScopeBodyMissing) {
-			return ControlResult{}, ErrControlPending
-		}
 		return ControlResult{}, fmt.Errorf("%s: loading scope body for %s: %w", bead.ID, scopeRef, err)
-	}
-
-	if isRetryAttemptSubject(subject) {
-		if err := setOutcomeAndClose(store, bead.ID, "pass"); err != nil {
-			return ControlResult{}, fmt.Errorf("%s: completing retry-attempt control bead: %w", bead.ID, err)
-		}
-		remainingOpen, err := hasOpenScopeMembers(store, rootID, scopeRef)
-		if err != nil {
-			return ControlResult{}, fmt.Errorf("%s: checking scope completion: %w", bead.ID, err)
-		}
-		if !remainingOpen {
-			outputJSON, err := resolveScopeOutputJSON(store, rootID, scopeRef, subject)
-			if err != nil {
-				return ControlResult{}, fmt.Errorf("%s: resolving scope output: %w", bead.ID, err)
-			}
-			if outputJSON != "" {
-				if err := store.SetMetadata(body.ID, "gc.output_json", outputJSON); err != nil {
-					return ControlResult{}, fmt.Errorf("%s: propagating scope output: %w", body.ID, err)
-				}
-			}
-			bodyAfter, getErr := store.Get(body.ID)
-			if getErr != nil {
-				return ControlResult{}, fmt.Errorf("%s: reloading scope body: %w", body.ID, getErr)
-			}
-			if bodyAfter.Status != "closed" {
-				if err := setOutcomeAndClose(store, body.ID, "pass"); err != nil {
-					return ControlResult{}, fmt.Errorf("%s: completing scope body: %w", body.ID, err)
-				}
-			}
-			return ControlResult{Processed: true, Action: "scope-pass"}, nil
-		}
-		return ControlResult{Processed: true, Action: "continue"}, nil
 	}
 
 	if subject.Metadata["gc.outcome"] == "fail" {
@@ -172,18 +127,6 @@ func processScopeCheck(store beads.Store, bead beads.Bead) (ControlResult, error
 	return ControlResult{Processed: true, Action: "continue"}, nil
 }
 
-func isRetryAttemptSubject(subject beads.Bead) bool {
-	if subject.Metadata["gc.logical_bead_id"] == "" {
-		return false
-	}
-	switch subject.Metadata["gc.kind"] {
-	case "retry-run", "retry-eval":
-		return true
-	default:
-		return false
-	}
-}
-
 func processWorkflowFinalize(store beads.Store, bead beads.Bead) (ControlResult, error) {
 	rootID := bead.Metadata["gc.root_bead_id"]
 	if rootID == "" {
@@ -218,9 +161,6 @@ func reconcileTerminalScopedMember(store beads.Store, bead beads.Bead) (ControlR
 	}
 	body, err := resolveScopeBody(store, rootID, scopeRef)
 	if err != nil {
-		if errors.Is(err, errScopeBodyMissing) {
-			return ControlResult{}, ErrControlPending
-		}
 		return ControlResult{}, fmt.Errorf("%s: loading scope body for %s: %w", bead.ID, scopeRef, err)
 	}
 
@@ -288,7 +228,7 @@ func resolveScopeBody(store beads.Store, rootID, scopeRef string) (beads.Bead, e
 	if bead, ok := findScopeBody(all, rootID, scopeRef); ok {
 		return bead, nil
 	}
-	return beads.Bead{}, fmt.Errorf("%w: scope %q not found under root %s", errScopeBodyMissing, scopeRef, rootID)
+	return beads.Bead{}, fmt.Errorf("scope %q not found under root %s", scopeRef, rootID)
 }
 
 func skipOpenScopeMembers(store beads.Store, rootID, scopeRef, skipControlID string) (int, error) {
@@ -307,28 +247,6 @@ func skipOpenScopeMembers(store beads.Store, rootID, scopeRef, skipControlID str
 			continue
 		}
 		pending[member.ID] = member
-	}
-	all, err := listByWorkflowRoot(store, rootID)
-	if err != nil {
-		return 0, err
-	}
-	for _, member := range scopeBeads {
-		if member.Metadata["gc.kind"] != "retry" {
-			continue
-		}
-		switch member.Metadata["gc.scope_role"] {
-		case "body", "teardown":
-			continue
-		}
-		for _, candidate := range all {
-			if candidate.Status != "open" {
-				continue
-			}
-			if !isRetryDescendant(member, candidate) {
-				continue
-			}
-			pending[candidate.ID] = candidate
-		}
 	}
 
 	skipped := 0
@@ -432,33 +350,6 @@ func listByWorkflowRoot(store beads.Store, rootID string) ([]beads.Bead, error) 
 		}
 	}
 	return result, nil
-}
-
-func isRetryDescendant(logical, candidate beads.Bead) bool {
-	if candidate.Metadata["gc.kind"] != "retry-run" && candidate.Metadata["gc.kind"] != "retry-eval" {
-		return false
-	}
-	if candidate.Metadata["gc.logical_bead_id"] == logical.ID {
-		return true
-	}
-	if strings.HasPrefix(candidate.ID, logical.ID+".run.") || strings.HasPrefix(candidate.ID, logical.ID+".eval.") {
-		return true
-	}
-	logicalRef := strings.TrimSpace(logical.Metadata["gc.step_ref"])
-	if logicalRef == "" {
-		logicalRef = strings.TrimSpace(logical.Ref)
-	}
-	if logicalRef == "" {
-		return false
-	}
-	candidateRef := strings.TrimSpace(candidate.Metadata["gc.step_ref"])
-	if candidateRef == "" {
-		candidateRef = strings.TrimSpace(candidate.Ref)
-	}
-	if strings.HasPrefix(candidateRef, logicalRef+".run.") || strings.HasPrefix(candidateRef, logicalRef+".eval.") {
-		return true
-	}
-	return false
 }
 
 func findScopeBody(all []beads.Bead, rootID, scopeRef string) (beads.Bead, bool) {

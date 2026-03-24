@@ -376,11 +376,8 @@ func TestCompileScopedWorkCarriesScopeAndCleanupMetadata(t *testing.T) {
 	if got := cleanup.Metadata["gc.scope_role"]; got != "teardown" {
 		t.Fatalf("cleanup gc.scope_role = %q, want teardown", got)
 	}
-	if got := cleanup.Metadata["gc.kind"]; got != "retry" {
-		t.Fatalf("cleanup gc.kind = %q, want retry", got)
-	}
-	if got := cleanup.Metadata["gc.original_kind"]; got != "cleanup" {
-		t.Fatalf("cleanup gc.original_kind = %q, want cleanup", got)
+	if got := cleanup.Metadata["gc.kind"]; got != "cleanup" {
+		t.Fatalf("cleanup gc.kind = %q, want cleanup", got)
 	}
 	scopeCheck := recipe.StepByID("mol-scoped-work.implement-scope-check")
 	if scopeCheck == nil {

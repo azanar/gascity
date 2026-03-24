@@ -94,32 +94,6 @@ func cmdHook(args []string, inject bool, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	// Many built-in/default work queries key off session identity. When hook
-	// is invoked as `gc hook <agent>`, export the resolved agent/session name so
-	// the query sees the same identity that resolution used.
-	restoreAgent := os.Getenv("GC_AGENT")
-	restoreSession := os.Getenv("GC_SESSION_NAME")
-	if os.Getenv("GC_AGENT") == "" {
-		_ = os.Setenv("GC_AGENT", agentName)
-		defer func() {
-			if restoreAgent == "" {
-				_ = os.Unsetenv("GC_AGENT")
-			} else {
-				_ = os.Setenv("GC_AGENT", restoreAgent)
-			}
-		}()
-	}
-	if os.Getenv("GC_SESSION_NAME") == "" {
-		_ = os.Setenv("GC_SESSION_NAME", agentName)
-		defer func() {
-			if restoreSession == "" {
-				_ = os.Unsetenv("GC_SESSION_NAME")
-			} else {
-				_ = os.Setenv("GC_SESSION_NAME", restoreSession)
-			}
-		}()
-	}
-
 	workQuery := a.EffectiveWorkQuery()
 	workDir := agentCommandDir(cityPath, &a, cfg.Rigs)
 	return doHook(workQuery, workDir, inject, shellWorkQuery, stdout, stderr)

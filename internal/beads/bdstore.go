@@ -34,24 +34,6 @@ func ExecCommandRunner() CommandRunner {
 func ExecCommandRunnerWithEnv(env map[string]string) CommandRunner {
 	return func(dir, name string, args ...string) ([]byte, error) {
 		start := time.Now()
-		trace := func(status string, err error) {
-			path := strings.TrimSpace(os.Getenv("GC_BD_TRACE"))
-			if path == "" {
-				return
-			}
-			f, openErr := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-			if openErr != nil {
-				return
-			}
-			defer f.Close() //nolint:errcheck // best-effort trace log
-			msg := ""
-			if err != nil {
-				msg = err.Error()
-			}
-			fmt.Fprintf(f, "%s status=%s dur=%s dir=%s cmd=%s args=%q err=%q\n",
-				time.Now().UTC().Format(time.RFC3339Nano), status, time.Since(start), dir, name, args, msg) //nolint:errcheck
-		}
-		trace("start", nil)
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, name, args...)
@@ -70,17 +52,14 @@ func ExecCommandRunnerWithEnv(env map[string]string) CommandRunner {
 		}
 		if ctx.Err() == context.DeadlineExceeded {
 			timeoutErr := fmt.Errorf("timed out after 30s")
-			trace("timeout", timeoutErr)
 			if stderr.Len() > 0 {
 				return out, fmt.Errorf("%w: %s", timeoutErr, stderr.String())
 			}
 			return out, timeoutErr
 		}
 		if err != nil && stderr.Len() > 0 {
-			trace("error", err)
 			return out, fmt.Errorf("%w: %s", err, stderr.String())
 		}
-		trace("done", err)
 		return out, err
 	}
 }

@@ -80,29 +80,6 @@ func evaluatePool(agentName string, pool config.PoolConfig, dir string, runner S
 	return desired, nil
 }
 
-// floorSingletonPoolDesiredFromWorkQuery rescues singleton pools whose scale
-// check returned 0 even though their work_query shows actionable work.
-// This keeps pools like workflow-control from disappearing on a transient
-// check failure before the later work-query-driven wake path runs.
-func floorSingletonPoolDesiredFromWorkQuery(agent config.Agent, desired int, dir string, runner ScaleCheckRunner) (int, error) {
-	pool := agent.EffectivePool()
-	if desired > 0 || pool.Max != 1 || runner == nil {
-		return desired, nil
-	}
-	wq := agent.EffectiveWorkQuery()
-	if strings.TrimSpace(wq) == "" {
-		return desired, nil
-	}
-	out, err := runner(wq, dir)
-	if err != nil {
-		return desired, err
-	}
-	if workQueryHasReadyWork(strings.TrimSpace(out)) {
-		return 1, nil
-	}
-	return desired, nil
-}
-
 // SessionSetupContext holds template variables for session_setup command expansion.
 type SessionSetupContext struct {
 	Session   string // tmux session name

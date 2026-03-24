@@ -116,10 +116,6 @@ func Instantiate(ctx context.Context, store beads.Store, recipe *formula.Recipe,
 	if len(recipe.Steps) == 0 {
 		return nil, fmt.Errorf("recipe %q has no steps", recipe.Name)
 	}
-	if applier, ok := store.(beads.GraphApplyStore); ok {
-		return instantiateViaGraphApply(ctx, applier, recipe, opts)
-	}
-	graphApplyTracef("graph-apply unavailable recipe=%s store=%T", recipe.Name, store)
 
 	// Merge variable defaults from recipe with caller-provided vars.
 	vars := applyVarDefaults(opts.Vars, recipe.Vars)
@@ -295,10 +291,6 @@ func InstantiateFragment(ctx context.Context, store beads.Store, recipe *formula
 	if len(recipe.Steps) == 0 {
 		return &FragmentResult{IDMapping: map[string]string{}}, nil
 	}
-	if applier, ok := store.(beads.GraphApplyStore); ok {
-		return instantiateFragmentViaGraphApply(ctx, store, applier, recipe, opts)
-	}
-	graphApplyTracef("graph-apply fragment-unavailable root=%s store=%T", opts.RootID, store)
 
 	vars := applyVarDefaults(opts.Vars, recipe.Vars)
 	idMapping := make(map[string]string, len(recipe.Steps))
@@ -478,14 +470,6 @@ func logicalRecipeStepID(step formula.RecipeStep) (string, bool) {
 			if trimmed, ok := trimAttemptSuffix(step.ID, ".check."+attempt); ok {
 				return trimmed, true
 			}
-		case "retry-run":
-			if trimmed, ok := trimAttemptSuffix(step.ID, ".run."+attempt); ok {
-				return trimmed, true
-			}
-		case "retry-eval":
-			if trimmed, ok := trimAttemptSuffix(step.ID, ".eval."+attempt); ok {
-				return trimmed, true
-			}
 		}
 	}
 	if logicalID := step.Metadata["gc.ralph_step_id"]; logicalID != "" {
@@ -494,10 +478,10 @@ func logicalRecipeStepID(step formula.RecipeStep) (string, bool) {
 			return logicalID, true
 		}
 	}
-	if kind != "run" && kind != "check" && kind != "scope" && kind != "retry-run" && kind != "retry-eval" {
+	if kind != "run" && kind != "check" && kind != "scope" {
 		return "", false
 	}
-	for _, prefix := range []string{".run.", ".check.", ".eval."} {
+	for _, prefix := range []string{".run.", ".check."} {
 		if idx := strings.LastIndex(step.ID, prefix); idx > 0 {
 			return step.ID[:idx], true
 		}
@@ -519,9 +503,7 @@ func existingLogicalBeadIDIndex(store beads.Store, rootID string) (map[string]st
 	}
 	index := make(map[string]string)
 	for _, bead := range all {
-		switch bead.Metadata["gc.kind"] {
-		case "ralph", "retry":
-		default:
+		if bead.Metadata["gc.kind"] != "ralph" {
 			continue
 		}
 		if bead.ID != rootID && bead.Metadata["gc.root_bead_id"] != rootID {

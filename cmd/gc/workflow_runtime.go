@@ -1,9 +1,7 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,9 +10,7 @@ import (
 
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/config"
-	"github.com/gastownhall/gascity/internal/events"
 	"github.com/gastownhall/gascity/internal/formula"
-	"github.com/gastownhall/gascity/internal/workflow"
 	"github.com/spf13/cobra"
 )
 
@@ -22,7 +18,7 @@ const graphExecutionRouteMetaKey = "gc.execution_routed_to"
 
 func isWorkflowControlKind(kind string) bool {
 	switch kind {
-	case "check", "fanout", "retry-eval", "scope-check", "workflow-finalize":
+	case "check", "fanout", "scope-check", "workflow-finalize":
 		return true
 	default:
 		return false
@@ -43,7 +39,7 @@ func workflowExecutionRoute(bead beads.Bead) string {
 	return workflowExecutionRouteFromMeta(bead.Metadata)
 }
 
-func workflowControlBinding(store beads.Store, cityName string, cfg *config.City) (graphRouteBinding, error) {
+func workflowControlBinding(store beads.Store, cityName, cityPath string, cfg *config.City) (graphRouteBinding, error) {
 	if cfg == nil {
 		return graphRouteBinding{}, fmt.Errorf("workflow-control route requires config")
 	}
@@ -56,9 +52,9 @@ func workflowControlBinding(store beads.Store, cityName string, cfg *config.City
 		binding.label = "pool:" + agentCfg.QualifiedName()
 		return binding, nil
 	}
-	sn := lookupSessionNameOrLegacy(store, cityName, agentCfg.QualifiedName(), cfg.Workspace.SessionTemplate)
-	if sn == "" {
-		return graphRouteBinding{}, fmt.Errorf("could not resolve session name for %q", agentCfg.QualifiedName())
+	sn, err := ensureSessionForTemplate(cityPath, cfg, store, agentCfg.QualifiedName(), io.Discard)
+	if err != nil {
+		return graphRouteBinding{}, err
 	}
 	binding.sessionName = sn
 	return binding, nil
@@ -89,27 +85,14 @@ func assignGraphStepRoute(step *formula.RecipeStep, executionBinding graphRouteB
 }
 
 var (
-	workflowServeList               = nextWorkflowServeBeads
-	workflowServeControl            = runWorkflowControl
-	workflowServeOpenEventsProvider = func(stderr io.Writer) (events.Provider, error) {
-		ep, code := openCityEventsProvider(stderr, "gc workflow serve")
-		if ep == nil {
-			return nil, fmt.Errorf("opening events provider (exit %d)", code)
-		}
-		return ep, nil
-	}
-	workflowServeIdlePollInterval  = 100 * time.Millisecond
-	workflowServeIdlePollAttempts  = 3
-	workflowServeWakeSweepInterval = 1 * time.Second
+	workflowServeNext    = nextWorkflowServeBead
+	workflowServeControl = runWorkflowControl
 )
 
-const workflowServeScanLimit = 20
-
 func newWorkflowServeCmd(stdout, stderr io.Writer) *cobra.Command {
-	var follow bool
 	cmd := &cobra.Command{
 		Use:    "serve [agent]",
-		Short:  "Run graph.v2 workflow control work",
+		Short:  "Run one-shot graph.v2 workflow control work",
 		Hidden: true,
 		Args:   cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
@@ -117,14 +100,13 @@ func newWorkflowServeCmd(stdout, stderr io.Writer) *cobra.Command {
 			if len(args) > 0 {
 				agentName = args[0]
 			}
-			if err := runWorkflowServe(agentName, follow, stdout, stderr); err != nil {
+			if err := runWorkflowServe(agentName, stdout, stderr); err != nil {
 				fmt.Fprintf(stderr, "gc workflow serve: %v\n", err) //nolint:errcheck
 				return errExit
 			}
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&follow, "follow", false, "Stay resident and wait for workflow-relevant city events")
 	return cmd
 }
 
@@ -146,7 +128,7 @@ func workflowTracef(format string, args ...any) {
 	fmt.Fprintf(f, "%s %s\n", time.Now().UTC().Format(time.RFC3339), fmt.Sprintf(format, args...)) //nolint:errcheck
 }
 
-func runWorkflowServe(agentName string, follow bool, _ io.Writer, stderr io.Writer) error {
+func runWorkflowServe(agentName string, _ io.Writer, stderr io.Writer) error {
 	cityPath, err := resolveCity()
 	if err != nil {
 		return err
@@ -167,177 +149,52 @@ func runWorkflowServe(agentName string, follow bool, _ io.Writer, stderr io.Writ
 	}
 	workDir := agentCommandDir(cityPath, &agentCfg, cfg.Rigs)
 	workflowTracef("serve start agent=%s city=%s dir=%s", agentCfg.QualifiedName(), cityPath, workDir)
-	if !follow {
-		_, err := drainWorkflowServeWork(agentCfg, workDir, stderr)
-		return err
-	}
-	return runWorkflowServeFollow(agentCfg, workDir, stderr)
-}
 
-func drainWorkflowServeWork(agentCfg config.Agent, workDir string, stderr io.Writer) (bool, error) {
-	processedAny := false
-	idlePolls := 0
 	for {
-		queue, err := workflowServeList(workflowServeQuery(agentCfg.EffectiveWorkQuery()), workDir)
+		beadID, kind, err := workflowServeNext(agentCfg.EffectiveWorkQuery(), workDir)
 		if err != nil {
 			workflowTracef("serve query-error agent=%s err=%v", agentCfg.QualifiedName(), err)
-			return processedAny, fmt.Errorf("querying control work for %s: %w", agentCfg.QualifiedName(), err)
+			return fmt.Errorf("querying control work for %s: %w", agentCfg.QualifiedName(), err)
 		}
-		if len(queue) == 0 {
-			if processedAny && idlePolls < workflowServeIdlePollAttempts {
-				idlePolls++
-				workflowTracef("serve idle-retry agent=%s attempt=%d", agentCfg.QualifiedName(), idlePolls)
-				time.Sleep(workflowServeIdlePollInterval)
-				continue
-			}
+		if beadID == "" {
 			workflowTracef("serve idle-exit agent=%s", agentCfg.QualifiedName())
-			return processedAny, nil
-		}
-		idlePolls = 0
-		processedThisCycle := false
-		pendingCount := 0
-		for _, candidate := range queue {
-			beadID := candidate.ID
-			kind := strings.TrimSpace(candidate.Metadata["gc.kind"])
-			if !isWorkflowControlKind(kind) {
-				workflowTracef("serve unexpected-kind bead=%s kind=%s", beadID, kind)
-				return processedAny, fmt.Errorf("bead %s has unexpected non-control kind %q", beadID, kind)
-			}
-			workflowTracef("serve process bead=%s kind=%s", beadID, kind)
-			if err := workflowServeControl(beadID, io.Discard, stderr); err != nil {
-				if errors.Is(err, workflow.ErrControlPending) {
-					pendingCount++
-					workflowTracef("serve pending bead=%s kind=%s", beadID, kind)
-					continue
-				}
-				workflowTracef("serve process-error bead=%s kind=%s err=%v", beadID, kind, err)
-				return processedAny, fmt.Errorf("processing control bead %s: %w", beadID, err)
-			}
-			workflowTracef("serve processed bead=%s kind=%s", beadID, kind)
-			processedAny = true
-			processedThisCycle = true
-			break
-		}
-		if processedThisCycle {
-			continue
-		}
-		if pendingCount > 0 {
-			workflowTracef("serve pending-queue agent=%s count=%d", agentCfg.QualifiedName(), pendingCount)
-			return processedAny, nil
-		}
-	}
-}
-
-func runWorkflowServeFollow(agentCfg config.Agent, workDir string, stderr io.Writer) error {
-	ep, err := workflowServeOpenEventsProvider(stderr)
-	if err != nil {
-		return err
-	}
-	defer ep.Close() //nolint:errcheck // best-effort cleanup
-
-	afterSeq, err := ep.LatestSeq()
-	if err != nil {
-		return fmt.Errorf("reading current event cursor: %w", err)
-	}
-	watcher, err := ep.Watch(context.Background(), afterSeq)
-	if err != nil {
-		return fmt.Errorf("watching city events: %w", err)
-	}
-	defer watcher.Close() //nolint:errcheck // best-effort cleanup
-	done := make(chan struct{})
-	defer close(done)
-
-	eventCh := make(chan workflowWatchResult, 1)
-	go pumpWorkflowEvents(done, watcher, eventCh)
-
-	for {
-		if _, err := drainWorkflowServeWork(agentCfg, workDir, stderr); err != nil {
-			return err
-		}
-		if err := waitForRelevantWorkflowWake(eventCh); err != nil {
-			return err
-		}
-	}
-}
-
-type workflowWatchResult struct {
-	evt events.Event
-	err error
-}
-
-func pumpWorkflowEvents(done <-chan struct{}, watcher events.Watcher, eventCh chan<- workflowWatchResult) {
-	for {
-		evt, err := watcher.Next()
-		select {
-		case eventCh <- workflowWatchResult{evt: evt, err: err}:
-		case <-done:
-			return
-		}
-		if err != nil {
-			return
-		}
-	}
-}
-
-func waitForRelevantWorkflowWake(eventCh <-chan workflowWatchResult) error {
-	timer := time.NewTimer(workflowServeWakeSweepInterval)
-	defer timer.Stop()
-
-	for {
-		select {
-		case res := <-eventCh:
-			if res.err != nil {
-				return res.err
-			}
-			if workflowEventRelevant(res.evt) {
-				workflowTracef("serve wake-event type=%s subject=%s", res.evt.Type, res.evt.Subject)
-				return nil
-			}
-			workflowTracef("serve ignore-event type=%s subject=%s", res.evt.Type, res.evt.Subject)
-		case <-timer.C:
-			workflowTracef("serve wake-sweep")
 			return nil
 		}
+		if !isWorkflowControlKind(kind) {
+			workflowTracef("serve unexpected-kind bead=%s kind=%s", beadID, kind)
+			return fmt.Errorf("bead %s has unexpected non-control kind %q", beadID, kind)
+		}
+		workflowTracef("serve process bead=%s kind=%s", beadID, kind)
+		if err := workflowServeControl(beadID, io.Discard, stderr); err != nil {
+			workflowTracef("serve process-error bead=%s kind=%s err=%v", beadID, kind, err)
+			return fmt.Errorf("processing control bead %s: %w", beadID, err)
+		}
+		workflowTracef("serve processed bead=%s kind=%s", beadID, kind)
 	}
 }
 
-func workflowEventRelevant(evt events.Event) bool {
-	switch evt.Type {
-	case events.BeadCreated, events.BeadClosed, events.BeadUpdated:
-		return true
-	default:
-		return false
-	}
-}
-
-func workflowServeQuery(workQuery string) string {
-	const single = "--limit=1"
-	scan := fmt.Sprintf("--limit=%d", workflowServeScanLimit)
-	if strings.Contains(workQuery, single) {
-		return strings.Replace(workQuery, single, scan, 1)
-	}
-	return workQuery
-}
-
-func nextWorkflowServeBeads(workQuery, dir string) ([]hookBead, error) {
+func nextWorkflowServeBead(workQuery, dir string) (string, string, error) {
 	if workQuery == "" {
-		return nil, nil
+		return "", "", nil
 	}
 	output, err := shellWorkQuery(workQuery, dir)
 	if err != nil {
-		return nil, err
+		return "", "", err
 	}
 	trimmed := strings.TrimSpace(output)
 	if !workQueryHasReadyWork(trimmed) {
-		return nil, nil
+		return "", "", nil
 	}
 	var beadsOut []hookBead
 	if err := json.Unmarshal([]byte(trimmed), &beadsOut); err == nil {
-		return beadsOut, nil
+		if len(beadsOut) == 0 {
+			return "", "", nil
+		}
+		return beadsOut[0].ID, strings.TrimSpace(beadsOut[0].Metadata["gc.kind"]), nil
 	}
 	var bead hookBead
 	if err := json.Unmarshal([]byte(trimmed), &bead); err == nil {
-		return []hookBead{bead}, nil
+		return bead.ID, strings.TrimSpace(bead.Metadata["gc.kind"]), nil
 	}
-	return nil, fmt.Errorf("unexpected work query output: %s", trimmed)
+	return "", "", fmt.Errorf("unexpected work query output: %s", trimmed)
 }

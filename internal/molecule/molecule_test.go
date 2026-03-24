@@ -11,20 +11,6 @@ import (
 	"github.com/gastownhall/gascity/internal/formula"
 )
 
-type graphApplySpyStore struct {
-	*beads.MemStore
-	plan *beads.GraphApplyPlan
-}
-
-func (s *graphApplySpyStore) ApplyGraphPlan(_ context.Context, plan *beads.GraphApplyPlan) (*beads.GraphApplyResult, error) {
-	s.plan = plan
-	ids := make(map[string]string, len(plan.Nodes))
-	for i, node := range plan.Nodes {
-		ids[node.Key] = fmt.Sprintf("bd-%d", i+1)
-	}
-	return &beads.GraphApplyResult{IDs: ids}, nil
-}
-
 func TestInstantiateSimple(t *testing.T) {
 	store := beads.NewMemStore()
 	recipe := &formula.Recipe{
@@ -87,84 +73,6 @@ func TestInstantiateSimple(t *testing.T) {
 	}
 	if stepB.ParentID != result.RootID {
 		t.Errorf("step-b.ParentID = %q, want %q", stepB.ParentID, result.RootID)
-	}
-}
-
-func TestInstantiateUsesGraphApplyStoreWhenAvailable(t *testing.T) {
-	store := &graphApplySpyStore{MemStore: beads.NewMemStore()}
-	recipe := &formula.Recipe{
-		Name: "wf",
-		Steps: []formula.RecipeStep{
-			{ID: "wf", Title: "Workflow", Type: "task", IsRoot: true, Metadata: map[string]string{"gc.kind": "workflow"}},
-			{ID: "wf.step", Title: "Work", Type: "task", Assignee: "worker"},
-		},
-		Deps: []formula.RecipeDep{
-			{StepID: "wf.step", DependsOnID: "wf", Type: "parent-child"},
-		},
-	}
-
-	result, err := Instantiate(context.Background(), store, recipe, Options{})
-	if err != nil {
-		t.Fatalf("Instantiate: %v", err)
-	}
-	if result.RootID != "bd-1" {
-		t.Fatalf("RootID = %q, want bd-1", result.RootID)
-	}
-	if store.plan == nil {
-		t.Fatal("ApplyGraphPlan was not called")
-	}
-	if len(store.plan.Nodes) != 2 {
-		t.Fatalf("nodes = %d, want 2", len(store.plan.Nodes))
-	}
-	step := store.plan.Nodes[1]
-	if !step.AssignAfterCreate {
-		t.Fatalf("step.AssignAfterCreate = false, want true")
-	}
-	if got := step.MetadataRefs["gc.root_bead_id"]; got != "wf" {
-		t.Fatalf("gc.root_bead_id ref = %q, want wf", got)
-	}
-	if len(store.plan.Edges) != 1 || store.plan.Edges[0].Type != "parent-child" {
-		t.Fatalf("edges = %+v, want one parent-child edge", store.plan.Edges)
-	}
-}
-
-func TestInstantiateUsesGraphApplyStoreForRetryLogicalRefs(t *testing.T) {
-	store := &graphApplySpyStore{MemStore: beads.NewMemStore()}
-	recipe := &formula.Recipe{
-		Name: "wf",
-		Steps: []formula.RecipeStep{
-			{ID: "wf", Title: "Workflow", Type: "task", IsRoot: true, Metadata: map[string]string{"gc.kind": "workflow"}},
-			{ID: "wf.review", Title: "Review", Type: "task", Metadata: map[string]string{"gc.kind": "retry"}},
-			{ID: "wf.review.run.1", Title: "Review attempt 1", Type: "task", Assignee: "polecat", Metadata: map[string]string{"gc.kind": "retry-run", "gc.attempt": "1"}},
-			{ID: "wf.review.eval.1", Title: "Evaluate review attempt 1", Type: "task", Metadata: map[string]string{"gc.kind": "retry-eval", "gc.attempt": "1"}},
-		},
-		Deps: []formula.RecipeDep{
-			{StepID: "wf.review", DependsOnID: "wf", Type: "parent-child"},
-			{StepID: "wf.review.run.1", DependsOnID: "wf.review", Type: "blocks"},
-			{StepID: "wf.review.eval.1", DependsOnID: "wf.review.run.1", Type: "blocks"},
-			{StepID: "wf.review", DependsOnID: "wf.review.eval.1", Type: "blocks"},
-		},
-	}
-
-	if _, err := Instantiate(context.Background(), store, recipe, Options{}); err != nil {
-		t.Fatalf("Instantiate: %v", err)
-	}
-	if store.plan == nil {
-		t.Fatal("ApplyGraphPlan was not called")
-	}
-
-	nodesByKey := make(map[string]beads.GraphApplyNode, len(store.plan.Nodes))
-	for _, node := range store.plan.Nodes {
-		nodesByKey[node.Key] = node
-	}
-
-	run := nodesByKey["wf.review.run.1"]
-	if got := run.MetadataRefs["gc.logical_bead_id"]; got != "wf.review" {
-		t.Fatalf("run gc.logical_bead_id ref = %q, want wf.review", got)
-	}
-	eval := nodesByKey["wf.review.eval.1"]
-	if got := eval.MetadataRefs["gc.logical_bead_id"]; got != "wf.review" {
-		t.Fatalf("eval gc.logical_bead_id ref = %q, want wf.review", got)
 	}
 }
 

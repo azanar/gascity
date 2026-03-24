@@ -27,9 +27,7 @@ const (
 	WorkflowControlAgentName = "workflow-control"
 	// WorkflowControlStartCommand runs the built-in workflow control worker.
 	// Wrapped in `sh -c` so any appended prompt suffix is ignored as $0.
-	// The control lane is kept resident and blocks on workflow-relevant city
-	// events instead of exiting after each one-shot drain.
-	WorkflowControlStartCommand = `sh -c 'export GC_WORKFLOW_TRACE="${GC_WORKFLOW_TRACE:-${GC_CITY}/workflow-control-trace.log}"; exec "${GC_BIN:-gc}" workflow serve --follow ` + WorkflowControlAgentName + `'`
+	WorkflowControlStartCommand = `sh -c 'export GC_WORKFLOW_TRACE="${GC_WORKFLOW_TRACE:-${GC_CITY}/workflow-control-trace.log}"; exec "${GC_BIN:-gc}" workflow serve ` + WorkflowControlAgentName + `'`
 	// WorkflowControlPoolLabel is the city-scoped pool label for workflow
 	// control beads. The control lane is intentionally city-scoped because
 	// graph.v2 workflow beads live in the city store.
@@ -1146,8 +1144,7 @@ type Agent struct {
 	// (WakeWork reason): non-empty output means work exists, which wakes
 	// sleeping sessions even without WakeConfig.
 	// Default for fixed agents: "bd ready --assignee=<qualified-name>".
-	// Default for pool agents:
-	// "bd ready --label=pool:<qualified-name> --json --limit=1 2>/dev/null".
+	// Default for pool agents: "bd ready --label=pool:<qualified-name> --limit=1".
 	// Override to integrate with external task systems.
 	WorkQuery string `toml:"work_query,omitempty"`
 	// SlingQuery is the command template to route a bead to this agent/pool.
@@ -1270,13 +1267,12 @@ func (a *Agent) AttachEnabled() bool {
 
 // EffectiveWorkQuery returns the work query command for this agent.
 // If WorkQuery is set, returns it as-is. Otherwise returns the default:
-//   - Pool agents: "bd ready --label=pool:<pool-name> --json --limit=1 2>/dev/null"
+//   - Pool agents: "bd ready --label=pool:<pool-name> --limit=1"
 //   - Fixed agents: "bd ready --assignee=$GC_SESSION_NAME"
 //
-// Fixed agents use the $GC_SESSION_NAME env var (set by the reconciler
-// and by gc hook when invoked with a positional agent name) so each
-// session has its own work queue. Clones of a template don't race for
-// work — each checks only its own queue.
+// Fixed agents use the $GC_SESSION_NAME env var (set by the reconciler)
+// so each session has its own work queue. Clones of a template don't
+// race for work — each checks only its own queue.
 //
 // Pool instances use PoolName (the template's qualified name) so all
 // instances in the pool search with the same label (e.g., pool:dog)
@@ -1290,9 +1286,10 @@ func (a *Agent) EffectiveWorkQuery() string {
 		if a.PoolName != "" {
 			label = a.PoolName
 		}
-		return "bd ready --label=pool:" + label + " --json --limit=1 2>/dev/null"
+		return "bd ready --label=pool:" + label + " --limit=1"
 	}
-	return `bd ready --assignee="$GC_SESSION_NAME" --json --limit=1 2>/dev/null`
+	return `bd ready --json --limit=0 2>/dev/null | ` +
+		`jq -c --arg a "$GC_SESSION_NAME" 'if type == "array" then map(select(.assignee == $a)) else (if .assignee == $a then [.] else [] end) end | .[:1]' 2>/dev/null`
 }
 
 // EffectiveSlingQuery returns the sling query command template for this agent.
@@ -1428,7 +1425,7 @@ func InjectImplicitAgents(cfg *City) {
 				StartCommand: WorkflowControlStartCommand,
 				WorkQuery:    `bd ready --label=` + WorkflowControlPoolLabel + ` --json --limit=1 2>/dev/null`,
 				SlingQuery:   "bd update {} --add-label=" + WorkflowControlPoolLabel,
-				Pool:         &PoolConfig{Min: 1, Max: 1},
+				Pool:         &PoolConfig{Min: 0, Max: 1},
 				Implicit:     true,
 			})
 		}
@@ -1480,7 +1477,7 @@ func InjectImplicitAgents(cfg *City) {
 			StartCommand: WorkflowControlStartCommand,
 			WorkQuery:    `bd ready --label=` + WorkflowControlPoolLabel + ` --json --limit=1 2>/dev/null`,
 			SlingQuery:   "bd update {} --add-label=" + WorkflowControlPoolLabel,
-			Pool:         &PoolConfig{Min: 1, Max: 1},
+			Pool:         &PoolConfig{Min: 0, Max: 1},
 			Implicit:     true,
 		})
 	}

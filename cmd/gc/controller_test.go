@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -284,52 +283,6 @@ func TestControllerReloadsConfig(t *testing.T) {
 	names, _ := lastAgentNames.Load().([]string)
 	if len(names) != 2 || names[0] != "mayor" || names[1] != "worker" {
 		t.Errorf("expected [mayor worker], got %v", names)
-	}
-}
-
-func TestHandleControllerConnWorkflowControl(t *testing.T) {
-	server, client := net.Pipe()
-	defer client.Close() //nolint:errcheck
-
-	convergenceReqCh := make(chan convergenceRequest, 1)
-	pokeCh := make(chan struct{}, 1)
-	workflowControlCh := make(chan struct{}, 1)
-
-	done := make(chan struct{})
-	go func() {
-		handleControllerConn(server, func() {}, convergenceReqCh, pokeCh, workflowControlCh)
-		close(done)
-	}()
-
-	if _, err := client.Write([]byte("workflow-control\n")); err != nil {
-		t.Fatalf("write command: %v", err)
-	}
-	buf := make([]byte, 16)
-	n, err := client.Read(buf)
-	if err != nil {
-		t.Fatalf("read ack: %v", err)
-	}
-	if got := string(buf[:n]); got != "ok\n" {
-		t.Fatalf("ack = %q, want %q", got, "ok\n")
-	}
-
-	select {
-	case <-workflowControlCh:
-	default:
-		t.Fatal("workflow-control channel was not signaled")
-	}
-
-	select {
-	case <-pokeCh:
-		t.Fatal("generic poke channel should remain untouched")
-	default:
-	}
-
-	client.Close() //nolint:errcheck
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("handleControllerConn did not exit")
 	}
 }
 

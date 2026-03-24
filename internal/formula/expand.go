@@ -32,13 +32,6 @@ const DefaultMaxExpansionDepth = 5
 // The parser is used to load referenced expansion formulas by name.
 // If parser is nil, no expansions are applied.
 func ApplyExpansions(steps []*Step, compose *ComposeRules, parser *Parser) ([]*Step, error) {
-	return ApplyExpansionsWithVars(steps, compose, parser, nil)
-}
-
-// ApplyExpansionsWithVars applies all expand and map rules to a formula's
-// steps, resolving any override values against the provided parent vars before
-// merging them into the expansion formula's own defaults.
-func ApplyExpansionsWithVars(steps []*Step, compose *ComposeRules, parser *Parser, parentVars map[string]string) ([]*Step, error) {
 	if compose == nil || parser == nil {
 		return steps, nil
 	}
@@ -80,7 +73,7 @@ func ApplyExpansionsWithVars(steps []*Step, compose *ComposeRules, parser *Parse
 		}
 
 		// Merge formula default vars with rule overrides
-		vars := mergeVars(expFormula, resolveOverrideVars(rule.Vars, parentVars))
+		vars := mergeVars(expFormula, rule.Vars)
 
 		// Expand the target step (start at depth 0)
 		expandedSteps, err := expandStep(targetStep, expFormula.Template, 0, vars)
@@ -125,7 +118,7 @@ func ApplyExpansionsWithVars(steps []*Step, compose *ComposeRules, parser *Parse
 		}
 
 		// Merge formula default vars with rule overrides
-		vars := mergeVars(expFormula, resolveOverrideVars(rule.Vars, parentVars))
+		vars := mergeVars(expFormula, rule.Vars)
 
 		// Find all matching steps (including nested children)
 		// Rebuild stepMap to capture any changes from previous expansions
@@ -167,21 +160,6 @@ func ApplyExpansionsWithVars(steps []*Step, compose *ComposeRules, parser *Parse
 	}
 
 	return result, nil
-}
-
-func resolveOverrideVars(overrides map[string]string, parentVars map[string]string) map[string]string {
-	if len(overrides) == 0 {
-		return nil
-	}
-	resolved := make(map[string]string, len(overrides))
-	for name, value := range overrides {
-		if len(parentVars) == 0 {
-			resolved[name] = value
-			continue
-		}
-		resolved[name] = substituteVars(value, parentVars)
-	}
-	return resolved
 }
 
 // findDuplicateStepIDs returns any duplicate step IDs found in the steps slice.
@@ -229,10 +207,7 @@ func expandStep(target *Step, template []*Step, depth int, vars map[string]strin
 		expanded.Description = substituteVars(substituteTargetPlaceholders(tmpl.Description, target), vars)
 		expanded.Notes = substituteVars(substituteTargetPlaceholders(tmpl.Notes, target), vars)
 		expanded.Assignee = substituteVars(tmpl.Assignee, vars)
-		// Keep condition expressions intact for the normal condition-filtering
-		// pass, which understands the {{var}} syntax. Eager single-brace var
-		// substitution here can corrupt "!{{flag}}" into "!{value}".
-		expanded.Condition = substituteTargetPlaceholders(tmpl.Condition, target)
+		expanded.Condition = substituteVars(substituteTargetPlaceholders(tmpl.Condition, target), vars)
 		expanded.Expand = substituteVars(substituteTargetPlaceholders(tmpl.Expand, target), vars)
 		expanded.WaitsFor = substituteVars(substituteTargetPlaceholders(tmpl.WaitsFor, target), vars)
 

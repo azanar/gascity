@@ -414,9 +414,10 @@ func syncSessionBeadsWithSnapshot(
 		// drift by comparing bead config_hash against desired config.
 		changed := false
 
-		// Existing session beads use "state" as reconciler-owned runtime state
-		// (awake/asleep/orphaned/suspended). Do not rewrite it here based only on
-		// provider liveness, or sync and reconcile will flap the field every tick.
+		if b.Metadata["state"] != state {
+			queueMeta("state", state)
+			changed = true
+		}
 
 		if b.Metadata["close_reason"] != "" || b.Metadata["closed_at"] != "" {
 			queueMeta("close_reason", "")

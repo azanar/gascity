@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1423,10 +1422,10 @@ title = "Do work"
 	opts := testOpts(a, "BL-42")
 	opts.OnFormula = "graph-work"
 
-	oldPoke := slingPokeWorkflowControl
-	defer func() { slingPokeWorkflowControl = oldPoke }()
+	oldPoke := slingPokeController
+	defer func() { slingPokeController = oldPoke }()
 	pokes := 0
-	slingPokeWorkflowControl = func(string) error {
+	slingPokeController = func(string) error {
 		pokes++
 		return nil
 	}
@@ -1465,58 +1464,6 @@ func TestOnFormulaWithTitle(t *testing.T) {
 	}
 	if b.ParentID != "BL-42" {
 		t.Errorf("bead ParentID = %q, want %q", b.ParentID, "BL-42")
-	}
-}
-
-func TestPokeSupervisorReturnsWithoutWaitingForReloadAck(t *testing.T) {
-	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
-	runtimeDir := filepath.Join(os.Getenv("XDG_RUNTIME_DIR"), "gc")
-	if err := os.MkdirAll(runtimeDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q): %v", runtimeDir, err)
-	}
-
-	lis, err := net.Listen("unix", supervisorSocketPath())
-	if err != nil {
-		t.Fatalf("Listen(unix, %q): %v", supervisorSocketPath(), err)
-	}
-	defer lis.Close() //nolint:errcheck
-
-	cmdCh := make(chan string, 1)
-	errCh := make(chan error, 1)
-	go func() {
-		conn, err := lis.Accept()
-		if err != nil {
-			errCh <- err
-			return
-		}
-		defer conn.Close() //nolint:errcheck
-		buf := make([]byte, 64)
-		n, err := conn.Read(buf)
-		if err != nil {
-			errCh <- err
-			return
-		}
-		cmdCh <- string(buf[:n])
-		time.Sleep(500 * time.Millisecond)
-	}()
-
-	start := time.Now()
-	if err := pokeSupervisor(); err != nil {
-		t.Fatalf("pokeSupervisor(): %v", err)
-	}
-	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
-		t.Fatalf("pokeSupervisor() took %v, want it to return immediately after queueing reload", elapsed)
-	}
-
-	select {
-	case cmd := <-cmdCh:
-		if cmd != "reload\n" {
-			t.Fatalf("supervisor command = %q, want %q", cmd, "reload\n")
-		}
-	case err := <-errCh:
-		t.Fatalf("supervisor accept/read: %v", err)
-	case <-time.After(1 * time.Second):
-		t.Fatal("timed out waiting for supervisor reload command")
 	}
 }
 

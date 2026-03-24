@@ -31,29 +31,18 @@ gc runtime drain-ack
 3. Execute exactly that bead's description.
 4. On success, close it:
    ```bash
-   bd update <id> --set-metadata gc.outcome=pass --status closed
+   bd close <id>
    ```
-5. On transient failure, mark it transient and close it:
+5. On unrecoverable failure, mark the bead failed and close it:
    ```bash
-   bd update <id> \
-     --set-metadata gc.outcome=fail \
-     --set-metadata gc.failure_class=transient \
-     --set-metadata gc.failure_reason=<short_reason> \
-     --status closed
+   bd update <id> --set-metadata gc.outcome=fail
+   bd close <id>
    ```
-6. On unrecoverable failure, mark it hard-failed and close it:
-   ```bash
-   bd update <id> \
-     --set-metadata gc.outcome=fail \
-     --set-metadata gc.failure_class=hard \
-     --set-metadata gc.failure_reason=<short_reason> \
-     --status closed
-   ```
-7. Check for more work before draining:
+6. Check for more work before draining:
    ```bash
    gc hook
    ```
-8. If more work exists, keep going in the same session. If not, drain:
+7. If more work exists, keep going in the same session. If not, drain:
    ```bash
    gc runtime drain-ack
    ```
@@ -69,9 +58,7 @@ gc runtime drain-ack
 
 - `gc.kind=workflow` and `gc.kind=scope` are latch beads. You should not
   receive them as normal work.
-- `gc.kind=ralph` and `gc.kind=retry` are logical controller beads. You should
-  not execute them directly.
-- `gc.kind=check|fanout|retry-eval|scope-check|workflow-finalize` are handled by the
+- `gc.kind=check|fanout|scope-check|workflow-finalize` are handled by the
   implicit `workflow-control` lane. Normal workers should not receive them.
 - If you see a teardown bead, run it even if earlier work failed. That is the
   point of the scope/finalizer model.
