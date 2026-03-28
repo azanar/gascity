@@ -204,8 +204,10 @@ esac
 	s := NewStore(script)
 
 	desc := "new description"
+	priority := 2
 	err := s.Update("EX-1", beads.UpdateOpts{
 		Description: &desc,
+		Priority:    &priority,
 		Labels:      []string{"extra"},
 	})
 	if err != nil {
@@ -219,6 +221,9 @@ esac
 	stdin := string(data)
 	if !strings.Contains(stdin, `"description":"new description"`) {
 		t.Errorf("stdin missing description, got: %s", stdin)
+	}
+	if !strings.Contains(stdin, `"priority":2`) {
+		t.Errorf("stdin missing priority, got: %s", stdin)
 	}
 	if !strings.Contains(stdin, `"extra"`) {
 		t.Errorf("stdin missing label, got: %s", stdin)

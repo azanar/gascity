@@ -1313,6 +1313,47 @@ func TestOnFormulaCopiesSourcePriorityToCreatedBeads(t *testing.T) {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
 	}
 
+	source, err := deps.Store.Get("BL-42")
+	if err != nil {
+		t.Fatalf("Get(BL-42): %v", err)
+	}
+	rootID := source.Metadata["molecule_id"]
+	if rootID == "" {
+		t.Fatal("source bead missing molecule_id")
+	}
+
+	root, err := deps.Store.Get(rootID)
+	if err != nil {
+		t.Fatalf("Get(%s): %v", rootID, err)
+	}
+	if root.Priority == nil || *root.Priority != 4 {
+		t.Fatalf("workflow root priority = %v, want 4", root.Priority)
+	}
+
+	queue := []string{rootID}
+	seenIDs := map[string]struct{}{rootID: {}}
+	seenDescendants := false
+	for len(queue) > 0 {
+		parentID := queue[0]
+		queue = queue[1:]
+
+		children, err := deps.Store.Children(parentID)
+		if err != nil {
+			t.Fatalf("Children(%s): %v", parentID, err)
+		}
+		for _, child := range children {
+			seenDescendants = true
+			if child.Priority == nil || *child.Priority != 4 {
+				t.Fatalf("workflow descendant %s priority = %v, want 4", child.ID, child.Priority)
+			}
+			seenIDs[child.ID] = struct{}{}
+			queue = append(queue, child.ID)
+		}
+	}
+	if !seenDescendants {
+		t.Fatal("workflow root has no descendants")
+	}
+
 	all, err := deps.Store.List()
 	if err != nil {
 		t.Fatalf("List: %v", err)
@@ -1321,8 +1362,11 @@ func TestOnFormulaCopiesSourcePriorityToCreatedBeads(t *testing.T) {
 		if bead.ID == "BL-42" {
 			continue
 		}
-		if bead.Priority == nil || *bead.Priority != 4 {
-			t.Fatalf("created bead %s priority = %v, want 4", bead.ID, bead.Priority)
+		if bead.Type == "convoy" && bead.Title == "sling-BL-42" {
+			continue
+		}
+		if _, ok := seenIDs[bead.ID]; !ok {
+			t.Fatalf("created bead %s was not reachable from workflow root %s", bead.ID, rootID)
 		}
 	}
 }

@@ -479,6 +479,9 @@ func (s *BdStore) Update(id string, opts UpdateOpts) error {
 	if opts.Type != nil {
 		args = append(args, "--type", *opts.Type)
 	}
+	if opts.Priority != nil {
+		args = append(args, "--priority", strconv.Itoa(*opts.Priority))
+	}
 	if opts.Description != nil {
 		args = append(args, "--description", *opts.Description)
 	}
