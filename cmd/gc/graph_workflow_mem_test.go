@@ -33,7 +33,7 @@ func buildMemGraphWorkflowConfig(t *testing.T) *config.City {
 			City: []string{builtinFormulaDir(t)},
 		},
 		Agents: []config.Agent{
-			{Name: "worker"},
+			{Name: "worker", MaxActiveSessions: intPtr(1)},
 		},
 	}
 	applyFeatureFlags(cfg)
@@ -423,8 +423,8 @@ func TestGraphWorkflowInMemoryRouteUsesWorkflowControlForControlBeads(t *testing
 			continue
 		}
 		foundControl = true
-		if bead.Assignee != "" {
-			t.Fatalf("control bead %s assignee = %q, want empty", bead.ID, bead.Assignee)
+		if bead.Assignee != config.WorkflowControlAgentName {
+			t.Fatalf("control bead %s assignee = %q, want %q", bead.ID, bead.Assignee, config.WorkflowControlAgentName)
 		}
 		if bead.Metadata["gc.routed_to"] != config.WorkflowControlAgentName {
 			t.Fatalf("control bead %s gc.routed_to = %q, want %q", bead.ID, bead.Metadata["gc.routed_to"], config.WorkflowControlAgentName)

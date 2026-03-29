@@ -24,7 +24,7 @@ func TestDecorateDynamicFragmentRecipeSupportsExplicitPerStepAgents(t *testing.T
 		Workspace: config.Workspace{Name: "test-city"},
 		Daemon:    config.DaemonConfig{GraphWorkflows: true},
 		Agents: []config.Agent{
-			{Name: "mayor"},
+			{Name: "mayor", MaxActiveSessions: intPtr(1)},
 			{Name: "reviewer"},
 		},
 	}
@@ -236,8 +236,8 @@ func TestDecorateDynamicFragmentRecipeUsesSourceRouteRigContextForBareTargets(t 
 		Workspace: config.Workspace{Name: "test-city"},
 		Daemon:    config.DaemonConfig{GraphWorkflows: true},
 		Agents: []config.Agent{
-			{Name: "reviewer", Dir: "frontend"},
-			{Name: "reviewer", Dir: "backend"},
+			{Name: "reviewer", Dir: "frontend", MaxActiveSessions: intPtr(1)},
+			{Name: "reviewer", Dir: "backend", MaxActiveSessions: intPtr(1)},
 		},
 	}
 	config.InjectImplicitAgents(cfg)
@@ -280,7 +280,7 @@ func TestDecorateDynamicFragmentRecipeMarksRetryEvalAsScopedControl(t *testing.T
 		Workspace: config.Workspace{Name: "test-city"},
 		Daemon:    config.DaemonConfig{GraphWorkflows: true},
 		Agents: []config.Agent{
-			{Name: "reviewer", Dir: "frontend"},
+			{Name: "reviewer", Dir: "frontend", MaxActiveSessions: intPtr(1)},
 		},
 	}
 	config.InjectImplicitAgents(cfg)
@@ -710,7 +710,7 @@ func TestResolveGraphStepBindingWorkflowFinalizeUsesFallback(t *testing.T) {
 		Workspace: config.Workspace{Name: "test-city"},
 		Daemon:    config.DaemonConfig{GraphWorkflows: true},
 		Agents: []config.Agent{
-			{Name: "mayor"},
+			{Name: "mayor", MaxActiveSessions: intPtr(1)},
 			{Name: "reviewer"},
 		},
 	}

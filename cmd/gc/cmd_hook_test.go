@@ -328,8 +328,8 @@ name = "worker"
 	if !strings.Contains(out, "session=worker") {
 		t.Fatalf("stdout = %q, want GC_SESSION_NAME=worker", out)
 	}
-	if !strings.Contains(out, `args=ready --assignee=worker --json --limit=1`) {
-		t.Fatalf("stdout = %q, want fixed-agent assignee-scoped ready query", out)
+	if !strings.Contains(out, `args=ready --metadata-field gc.routed_to=worker --unassigned --json --limit=1`) {
+		t.Fatalf("stdout = %q, want metadata-routed work query", out)
 	}
 }
 
@@ -387,8 +387,8 @@ dir = "myrig"
 	if !strings.Contains(out, "session="+wantSession) {
 		t.Fatalf("stdout = %q, want GC_SESSION_NAME=%s", out, wantSession)
 	}
-	if !strings.Contains(out, `args=ready --assignee=`+wantSession+` --json --limit=1`) {
-		t.Fatalf("stdout = %q, want rig-scoped session assignee query", out)
+	if !strings.Contains(out, `args=ready --metadata-field gc.routed_to=myrig/worker --unassigned --json --limit=1`) {
+		t.Fatalf("stdout = %q, want metadata-routed work query", out)
 	}
 }
 

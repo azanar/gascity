@@ -13,8 +13,8 @@ func TestDecorateGraphWorkflowRecipeSubstitutesRouteTargetsWithinRigContext(t *t
 	cfg := &config.City{
 		Workspace: config.Workspace{Name: "test-city"},
 		Agents: []config.Agent{
-			{Name: "claude", Dir: "frontend"},
-			{Name: "codex", Dir: "frontend"},
+			{Name: "claude", Dir: "frontend", MaxActiveSessions: intPtr(1)},
+			{Name: "codex", Dir: "frontend", MaxActiveSessions: intPtr(1)},
 			{Name: "workflow-control", Dir: "frontend", MinActiveSessions: intPtr(1), MaxActiveSessions: intPtr(1)},
 		},
 	}
