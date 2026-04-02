@@ -5,6 +5,13 @@ import (
 	"time"
 )
 
+// defaultOnDemandIdleTimeout is the fallback idle timeout for on-demand
+// named sessions that don't configure an explicit idle_timeout. Without
+// this, on-demand sessions kept alive by the "on-demand:running" override
+// would stay awake indefinitely. 5 minutes is long enough to handle a
+// conversation turn, short enough to not waste resources.
+const defaultOnDemandIdleTimeout = 5 * time.Minute
+
 // AwakeInput contains all pre-computed state needed to decide which sessions
 // should be awake. All external I/O (shell commands, tmux checks, store
 // queries) happens before this function is called.
@@ -235,15 +242,32 @@ func ComputeAwakeSet(input AwakeInput) map[string]AwakeDecision {
 			decision.Reason = "wait-ready"
 		}
 
+		// On-demand running override — on-demand sessions that are
+		// currently running stay awake even when demand drops to zero.
+		// They drain via idle_timeout, not demand absence. This
+		// supports message-driven wake: a message starts the session,
+		// it stays alive handling it, then idles until timeout.
+		// Drain-ack agents are unaffected — they manage their own
+		// lifecycle by calling drain-ack before this check matters.
+		if !decision.ShouldWake && !bead.Drained && !bead.WaitHold {
+			if input.RunningSessions[name] && isOnDemandSession(input.NamedSessions, bead) {
+				decision.ShouldWake = true
+				decision.Reason = "on-demand:running"
+			}
+		}
+
 		// Idle sleep: desired sessions idle too long should sleep.
 		// Attached sessions are never idle-slept.
 		if decision.ShouldWake && !input.AttachedSessions[name] && !bead.IdleSince.IsZero() {
 			agent, hasAgent := agentsByName[bead.Template]
-			idleTimeout := time.Duration(0)
-			if bead.ManualSession && input.ChatIdleTimeout > 0 {
+			var idleTimeout time.Duration
+			switch {
+			case bead.ManualSession && input.ChatIdleTimeout > 0:
 				idleTimeout = input.ChatIdleTimeout
-			} else if hasAgent && agent.SleepAfterIdle > 0 {
+			case hasAgent && agent.SleepAfterIdle > 0:
 				idleTimeout = agent.SleepAfterIdle
+			case isOnDemandSession(input.NamedSessions, bead):
+				idleTimeout = defaultOnDemandIdleTimeout
 			}
 			if idleTimeout > 0 && input.Now.Sub(bead.IdleSince) >= idleTimeout {
 				decision.ShouldWake = false
@@ -321,6 +345,18 @@ func collectActiveBeads(beads []AwakeSessionBead, template string) []AwakeSessio
 		}
 	}
 	return result
+}
+
+func isOnDemandSession(named []AwakeNamedSession, bead AwakeSessionBead) bool {
+	if bead.NamedIdentity == "" {
+		return false
+	}
+	for _, ns := range named {
+		if ns.Identity == bead.NamedIdentity && ns.Mode == "on_demand" {
+			return true
+		}
+	}
+	return false
 }
 
 func collectCreatingBeads(beads []AwakeSessionBead, template string) []AwakeSessionBead {

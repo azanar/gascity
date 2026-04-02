@@ -127,11 +127,32 @@ func TestNamedOnDemand_AssigneeMatches(t *testing.T) {
 	assertAwake(t, result, "hello-world--refinery")
 }
 
-func TestNamedOnDemand_WorkDone_Drains(t *testing.T) {
+func TestNamedOnDemand_WorkDone_StaysAwakeUntilIdle(t *testing.T) {
+	// On-demand session with work done: still running, no demand.
+	// Stays awake via on-demand:running override — drains only after
+	// idle timeout (default 5 min).
 	result := ComputeAwakeSet(AwakeInput{
 		Agents:          []AwakeAgent{{QualifiedName: "hello-world/refinery"}},
 		NamedSessions:   []AwakeNamedSession{{Identity: "hello-world/refinery", Template: "hello-world/refinery", Mode: "on_demand"}},
 		SessionBeads:    []AwakeSessionBead{{ID: "mc-1", SessionName: "hello-world--refinery", Template: "hello-world/refinery", State: "active", NamedIdentity: "hello-world/refinery"}},
+		RunningSessions: map[string]bool{"hello-world--refinery": true},
+		Now:             now,
+	})
+	assertAwake(t, result, "hello-world--refinery")
+	if d := result["hello-world--refinery"]; d.Reason != "on-demand:running" {
+		t.Errorf("reason = %q, want %q", d.Reason, "on-demand:running")
+	}
+}
+
+func TestNamedOnDemand_WorkDone_DrainsAfterDefaultIdle(t *testing.T) {
+	// Same scenario but idle for 6 min. Default 5 min timeout drains it.
+	result := ComputeAwakeSet(AwakeInput{
+		Agents:        []AwakeAgent{{QualifiedName: "hello-world/refinery"}},
+		NamedSessions: []AwakeNamedSession{{Identity: "hello-world/refinery", Template: "hello-world/refinery", Mode: "on_demand"}},
+		SessionBeads: []AwakeSessionBead{{
+			ID: "mc-1", SessionName: "hello-world--refinery", Template: "hello-world/refinery",
+			State: "active", NamedIdentity: "hello-world/refinery", IdleSince: now.Add(-6 * time.Minute),
+		}},
 		RunningSessions: map[string]bool{"hello-world--refinery": true},
 		Now:             now,
 	})
@@ -958,4 +979,138 @@ func TestRegression_AsleepEphemeralWithoutWork_StaysAsleep(t *testing.T) {
 		Now:              now,
 	})
 	assertAsleep(t, result, "polecat-mc-old")
+}
+
+// --- On-demand running override tests ---
+
+func TestOnDemand_RunningStaysAwake(t *testing.T) {
+	// On-demand named session is running but has no demand (scale=0,
+	// no assigned work). Should stay awake via "on-demand:running".
+	result := ComputeAwakeSet(AwakeInput{
+		Agents:        []AwakeAgent{{QualifiedName: "gascity/quinn"}},
+		NamedSessions: []AwakeNamedSession{{Identity: "gascity/quinn", Template: "gascity/quinn", Mode: "on_demand"}},
+		SessionBeads: []AwakeSessionBead{
+			{ID: "mc-1", SessionName: "gascity--quinn", Template: "gascity/quinn", State: "active", NamedIdentity: "gascity/quinn"},
+		},
+		RunningSessions: map[string]bool{"gascity--quinn": true},
+		Now:             now,
+	})
+	assertAwake(t, result, "gascity--quinn")
+	if d := result["gascity--quinn"]; d.Reason != "on-demand:running" {
+		t.Errorf("reason = %q, want %q", d.Reason, "on-demand:running")
+	}
+}
+
+func TestOnDemand_AsleepNotForced(t *testing.T) {
+	// On-demand named session is NOT running. Should stay asleep.
+	result := ComputeAwakeSet(AwakeInput{
+		Agents:        []AwakeAgent{{QualifiedName: "gascity/quinn"}},
+		NamedSessions: []AwakeNamedSession{{Identity: "gascity/quinn", Template: "gascity/quinn", Mode: "on_demand"}},
+		SessionBeads: []AwakeSessionBead{
+			{ID: "mc-1", SessionName: "gascity--quinn", Template: "gascity/quinn", State: "asleep", NamedIdentity: "gascity/quinn"},
+		},
+		RunningSessions: map[string]bool{},
+		Now:             now,
+	})
+	assertAsleep(t, result, "gascity--quinn")
+}
+
+func TestOnDemand_RunningDrainsAfterIdleTimeout(t *testing.T) {
+	// On-demand running but idle past explicit timeout. Idle sleep overrides.
+	result := ComputeAwakeSet(AwakeInput{
+		Agents:        []AwakeAgent{{QualifiedName: "gascity/quinn", SleepAfterIdle: 5 * time.Minute}},
+		NamedSessions: []AwakeNamedSession{{Identity: "gascity/quinn", Template: "gascity/quinn", Mode: "on_demand"}},
+		SessionBeads: []AwakeSessionBead{
+			{
+				ID: "mc-1", SessionName: "gascity--quinn", Template: "gascity/quinn", State: "active", NamedIdentity: "gascity/quinn",
+				IdleSince: now.Add(-6 * time.Minute),
+			},
+		},
+		RunningSessions: map[string]bool{"gascity--quinn": true},
+		Now:             now,
+	})
+	assertAsleep(t, result, "gascity--quinn")
+}
+
+func TestOnDemand_DefaultIdleTimeoutDrains(t *testing.T) {
+	// No explicit idle_timeout. Default 5min should drain after 6min idle.
+	result := ComputeAwakeSet(AwakeInput{
+		Agents:        []AwakeAgent{{QualifiedName: "gascity/quinn"}},
+		NamedSessions: []AwakeNamedSession{{Identity: "gascity/quinn", Template: "gascity/quinn", Mode: "on_demand"}},
+		SessionBeads: []AwakeSessionBead{
+			{
+				ID: "mc-1", SessionName: "gascity--quinn", Template: "gascity/quinn", State: "active", NamedIdentity: "gascity/quinn",
+				IdleSince: now.Add(-6 * time.Minute),
+			},
+		},
+		RunningSessions: map[string]bool{"gascity--quinn": true},
+		Now:             now,
+	})
+	assertAsleep(t, result, "gascity--quinn")
+}
+
+func TestOnDemand_DefaultIdleTimeoutKeepsAlive(t *testing.T) {
+	// No explicit idle_timeout. Default 5min, only 2min idle. Stays awake.
+	result := ComputeAwakeSet(AwakeInput{
+		Agents:        []AwakeAgent{{QualifiedName: "gascity/quinn"}},
+		NamedSessions: []AwakeNamedSession{{Identity: "gascity/quinn", Template: "gascity/quinn", Mode: "on_demand"}},
+		SessionBeads: []AwakeSessionBead{
+			{
+				ID: "mc-1", SessionName: "gascity--quinn", Template: "gascity/quinn", State: "active", NamedIdentity: "gascity/quinn",
+				IdleSince: now.Add(-2 * time.Minute),
+			},
+		},
+		RunningSessions: map[string]bool{"gascity--quinn": true},
+		Now:             now,
+	})
+	assertAwake(t, result, "gascity--quinn")
+}
+
+func TestOnDemand_RunningNotIdleYet(t *testing.T) {
+	// On-demand running, idle 2min, explicit timeout 5min. Stays awake.
+	result := ComputeAwakeSet(AwakeInput{
+		Agents:        []AwakeAgent{{QualifiedName: "gascity/quinn", SleepAfterIdle: 5 * time.Minute}},
+		NamedSessions: []AwakeNamedSession{{Identity: "gascity/quinn", Template: "gascity/quinn", Mode: "on_demand"}},
+		SessionBeads: []AwakeSessionBead{
+			{
+				ID: "mc-1", SessionName: "gascity--quinn", Template: "gascity/quinn", State: "active", NamedIdentity: "gascity/quinn",
+				IdleSince: now.Add(-2 * time.Minute),
+			},
+		},
+		RunningSessions: map[string]bool{"gascity--quinn": true},
+		Now:             now,
+	})
+	assertAwake(t, result, "gascity--quinn")
+}
+
+func TestAlwaysNamed_NotAffectedByRunningOverride(t *testing.T) {
+	// Always-mode uses desired set, not on-demand override.
+	result := ComputeAwakeSet(AwakeInput{
+		Agents:        []AwakeAgent{{QualifiedName: "mayor"}},
+		NamedSessions: []AwakeNamedSession{{Identity: "mayor", Template: "mayor", Mode: "always"}},
+		SessionBeads: []AwakeSessionBead{
+			{ID: "mc-1", SessionName: "mayor", Template: "mayor", State: "active", NamedIdentity: "mayor"},
+		},
+		RunningSessions: map[string]bool{"mayor": true},
+		Now:             now,
+	})
+	assertAwake(t, result, "mayor")
+	if d := result["mayor"]; d.Reason != "named-always" {
+		t.Errorf("reason = %q, want %q", d.Reason, "named-always")
+	}
+}
+
+func TestScaledPool_NotAffectedByRunningOverride(t *testing.T) {
+	// Pool with scale=0 and running session. Override must NOT
+	// keep pool sessions alive — scale-down must work.
+	result := ComputeAwakeSet(AwakeInput{
+		Agents: []AwakeAgent{{QualifiedName: "hello-world/polecat"}},
+		SessionBeads: []AwakeSessionBead{
+			{ID: "mc-1", SessionName: "polecat-mc-1", Template: "hello-world/polecat", State: "active"},
+		},
+		ScaleCheckCounts: map[string]int{"hello-world/polecat": 0},
+		RunningSessions:  map[string]bool{"polecat-mc-1": true},
+		Now:              now,
+	})
+	assertAsleep(t, result, "polecat-mc-1")
 }

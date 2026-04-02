@@ -21,12 +21,20 @@ type wakeEvaluation struct {
 	ConfigSuppressed bool
 }
 
-// wakeReasons computes why a session should be awake.
-// PURE FUNCTION — reads only, never writes metadata.
-// poolDesired is the per-tick snapshot from pool evaluation.
-// workSet is the per-tick snapshot of templates with assigned open work.
-// readyWaitSet contains session bead IDs with a durable ready wait.
-// Returns nil if the session should be asleep.
+// Deprecated: evaluateWakeReasons and wakeReasons are legacy functions
+// superseded by ComputeAwakeSet (compute_awake_set.go). The production
+// reconciler at session_reconciler.go:438 uses ComputeAwakeSet →
+// awakeSetToWakeEvals for all wake/drain decisions. These functions are
+// only called by computeWakeEvaluations (used as a nil-guard fallback
+// in advanceSessionDrains, which never fires because the reconciler
+// always passes non-nil wakeEvals) and by legacy tests.
+//
+// DO NOT add new wake logic here — it will have NO EFFECT on production
+// behavior. All wake/sleep changes must go through ComputeAwakeSet.
+//
+// TODO: Remove these functions and migrate remaining tests to
+// ComputeAwakeSet. Tracked as tech debt.
+
 func wakeReasons(
 	session beads.Bead,
 	cfg *config.City,
@@ -55,7 +63,6 @@ func evaluateWakeReasons(
 		if t, err := time.Parse(time.RFC3339, held); err == nil && clk.Now().Before(t) {
 			return wakeEvaluation{Policy: policy}
 		}
-		// Hold expired — treated as no hold. Cleared by healExpiredTimers().
 	}
 
 	// Quarantine suppresses all reasons.
@@ -63,7 +70,6 @@ func evaluateWakeReasons(
 		if t, err := time.Parse(time.RFC3339, q); err == nil && clk.Now().Before(t) {
 			return wakeEvaluation{Policy: policy}
 		}
-		// Quarantine expired — treated as no quarantine. Cleared by healExpiredTimers().
 	}
 
 	var reasons []WakeReason
@@ -84,8 +90,6 @@ func evaluateWakeReasons(
 	}
 	sleepSuppressed := configWakeSuppressed(session, policy, sp, clk)
 	if configEligible {
-		// When there's active demand (poolDesired > 0) or the session is
-		// a mode=always named session, override sleep suppression.
 		hasDemand := poolDesired[template] > 0
 		isAlwaysNamed := isNamedSessionBead(session) && namedSessionMode(session) == "always"
 		if !waitHold && (!sleepSuppressed || hasDemand || isAlwaysNamed) {
@@ -103,7 +107,6 @@ func evaluateWakeReasons(
 		reasons = append(reasons, WakeKeepWarm)
 	}
 
-	// WakeAttached: check if user terminal is connected.
 	if !waitHold && sp != nil {
 		if name != "" && sp.IsAttached(name) {
 			reasons = append(reasons, WakeAttached)
