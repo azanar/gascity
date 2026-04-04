@@ -226,7 +226,7 @@ func TestLoadWithFake(t *testing.T) {
 
 // TestLoadSkipsPackExpansion verifies that Load parses a city.toml containing
 // pack and rig-include references without attempting to expand them. This is
-// the behaviour the dashboard relies on — it only needs the workspace name,
+// the behavior the dashboard relies on — it only needs the workspace name,
 // not the fully-expanded agent tree.
 func TestLoadSkipsPackExpansion(t *testing.T) {
 	f := fsys.NewFake()
@@ -254,10 +254,10 @@ includes = ["gastown"]
 	}
 
 	// Confirm that LoadWithIncludes fails on the same config because the
-	// referenced packs are not materialised on the filesystem.
+	// referenced packs are not materialized on the filesystem.
 	_, _, err = LoadWithIncludes(f, "/city/city.toml")
 	if err == nil {
-		t.Fatal("LoadWithIncludes should fail when packs are not materialised")
+		t.Fatal("LoadWithIncludes should fail when packs are not materialized")
 	}
 }
 
