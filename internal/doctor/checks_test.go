@@ -650,6 +650,41 @@ func TestBeadsStoreCheck_OpenError(t *testing.T) {
 	}
 }
 
+func TestBeadsStoreCheck_ListPassesOpenFilter(t *testing.T) {
+	// The check should call ListOpen("open") to avoid unbounded queries
+	// that time out on large stores.
+	var gotStatus []string
+	spy := &spyOpenStore{
+		listOpenFunc: func(status ...string) ([]beads.Bead, error) {
+			gotStatus = status
+			return []beads.Bead{{Title: "x"}}, nil
+		},
+	}
+	c := NewBeadsStoreCheck(t.TempDir(), func(_ string) (beads.Store, error) {
+		return spy, nil
+	})
+	r := c.Run(&CheckContext{})
+	if r.Status != StatusOK {
+		t.Fatalf("status = %d, want OK; msg = %s", r.Status, r.Message)
+	}
+	if len(gotStatus) == 0 || gotStatus[0] != "open" {
+		t.Errorf("ListOpen called with status %v, want [\"open\"]", gotStatus)
+	}
+}
+
+// spyOpenStore is a minimal Store that records ListOpen calls.
+type spyOpenStore struct {
+	beads.MemStore
+	listOpenFunc func(status ...string) ([]beads.Bead, error)
+}
+
+func (s *spyOpenStore) ListOpen(status ...string) ([]beads.Bead, error) {
+	if s.listOpenFunc != nil {
+		return s.listOpenFunc(status...)
+	}
+	return s.MemStore.ListOpen(status...)
+}
+
 // --- DoltServerCheck ---
 
 func TestDoltServerCheck_Skipped(t *testing.T) {
@@ -779,6 +814,26 @@ func TestRigBeadsCheck_Error(t *testing.T) {
 	r := c.Run(&CheckContext{})
 	if r.Status != StatusError {
 		t.Errorf("status = %d, want Error", r.Status)
+	}
+}
+
+func TestRigBeadsCheck_ListPassesOpenFilter(t *testing.T) {
+	var gotStatus []string
+	spy := &spyOpenStore{
+		listOpenFunc: func(status ...string) ([]beads.Bead, error) {
+			gotStatus = status
+			return []beads.Bead{{Title: "x"}}, nil
+		},
+	}
+	c := NewRigBeadsCheck(config.Rig{Name: "myrig", Path: t.TempDir()}, func(_ string) (beads.Store, error) {
+		return spy, nil
+	})
+	r := c.Run(&CheckContext{})
+	if r.Status != StatusOK {
+		t.Fatalf("status = %d, want OK; msg = %s", r.Status, r.Message)
+	}
+	if len(gotStatus) == 0 || gotStatus[0] != "open" {
+		t.Errorf("ListOpen called with status %v, want [\"open\"]", gotStatus)
 	}
 }
 
