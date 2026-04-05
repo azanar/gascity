@@ -1350,6 +1350,7 @@ If the target directory doesn't exist, it is created. Use --include
 to apply a pack directory that defines the rig's agent configuration.
 
 Use --name to set the rig name explicitly (default: directory basename).
+Use --prefix to set the bead ID prefix explicitly (default: derived from name).
 Use --start-suspended to add the rig in a suspended state (dormant-by-default).
 The rig's agents won't spawn until explicitly resumed with "gc rig resume".
 
@@ -1362,6 +1363,7 @@ gc rig add <path> [flags]
 ```
 gc rig add /path/to/project
   gc rig add /path/to/project --name myrig
+  gc rig add /path/to/project --prefix r1
   gc rig add ./my-project --include packs/gastown
   gc rig add ./my-project --include packs/gastown --start-suspended
 ```
@@ -1370,6 +1372,7 @@ gc rig add /path/to/project
 |------|------|---------|-------------|
 | `--include` | string |  | pack directory for rig agents |
 | `--name` | string |  | rig name (default: directory basename) |
+| `--prefix` | string |  | bead ID prefix (default: derived from name) |
 | `--start-suspended` | bool |  | add rig in suspended state (dormant-by-default) |
 
 ## gc rig default

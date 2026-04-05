@@ -150,7 +150,7 @@ $ bd create "Write hello world in the language of your choice"
   Status: open
 ```
 
-The prefix comes from the name of the rig, e.g. "hello-world" shortens to "hw". To see a bead, you can show it:
+The prefix comes from the name of the rig, e.g. "hello-world" shortens to "hw". You can override this with `gc rig add --prefix <prefix>`. To see a bead, you can show it:
 
 ```shell
 ~/river-city/rigs/hello-world
