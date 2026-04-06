@@ -272,14 +272,13 @@ func ensureSessionNameAvailableForSelf(store beads.Store, name, selfID string) e
 	}
 	all, err := store.List(beads.ListQuery{
 		Label:         LabelSession,
-		Type:          BeadType,
 		IncludeClosed: true,
 	})
 	if err != nil {
 		return fmt.Errorf("listing sessions: %w", err)
 	}
 	for _, b := range all {
-		if b.Type != BeadType {
+		if !IsSessionBeadOrRepairable(b) {
 			continue
 		}
 		if b.ID == selfID {
@@ -373,7 +372,7 @@ func ensureConfiguredSessionNameAvailable(store beads.Store, cfg *config.City, n
 		return nil
 	}
 	if selfOwner == "" && selfID != "" {
-		if self, getErr := store.Get(selfID); getErr == nil && self.Type == BeadType {
+		if self, getErr := store.Get(selfID); getErr == nil && IsSessionBeadOrRepairable(self) {
 			selfOwner = configuredNamedSessionOwnerForSessionName(cfg, self, name)
 		}
 	}
@@ -403,20 +402,19 @@ func ensureSessionAliasAvailable(store beads.Store, cfg *config.City, alias, sel
 		hasSelfBead bool
 	)
 	if cfg != nil && selfID != "" {
-		if self, getErr := store.Get(selfID); getErr == nil && self.Type == BeadType {
+		if self, getErr := store.Get(selfID); getErr == nil && IsSessionBeadOrRepairable(self) {
 			selfBead = self
 			hasSelfBead = true
 		}
 	}
 	all, err := store.List(beads.ListQuery{
 		Label: LabelSession,
-		Type:  BeadType,
 	})
 	if err != nil {
 		return fmt.Errorf("listing sessions: %w", err)
 	}
 	for _, b := range all {
-		if b.Type != BeadType || b.ID == selfID {
+		if !IsSessionBeadOrRepairable(b) || b.ID == selfID {
 			continue
 		}
 		if b.Status == "closed" {

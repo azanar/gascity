@@ -155,9 +155,10 @@ func (m *Manager) loadSessionBead(id string, allowClosed bool) (beads.Bead, stri
 	if err != nil {
 		return beads.Bead{}, "", fmt.Errorf("getting session: %w", err)
 	}
-	if b.Type != BeadType {
+	if !IsSessionBeadOrRepairable(b) {
 		return beads.Bead{}, "", fmt.Errorf("%w: bead %s (type=%q)", ErrNotSession, id, b.Type)
 	}
+	RepairEmptyType(m.store, &b)
 	if !allowClosed && b.Status == "closed" {
 		return beads.Bead{}, "", fmt.Errorf("%w: %s", ErrSessionClosed, id)
 	}
@@ -397,14 +398,13 @@ func (m *Manager) TranscriptPath(id string, searchPaths []string) (string, error
 
 	all, err := m.store.List(beads.ListQuery{
 		Label: LabelSession,
-		Type:  BeadType,
 	})
 	if err != nil {
 		return "", fmt.Errorf("listing sessions: %w", err)
 	}
 	matches := 0
 	for _, other := range all {
-		if other.Type != BeadType {
+		if !IsSessionBeadOrRepairable(other) {
 			continue
 		}
 		// Only count active sessions — closed historical sessions should not

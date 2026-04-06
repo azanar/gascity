@@ -29,13 +29,15 @@ func loadSessionBeads(store beads.Store) ([]beads.Bead, error) {
 	}
 	all, err := store.List(beads.ListQuery{
 		Label: sessionBeadLabel,
-		Type:  sessionBeadType,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("listing session beads: %w", err)
 	}
 	var result []beads.Bead
 	for _, b := range all {
+		if !session.IsSessionBeadOrRepairable(b) {
+			continue
+		}
 		if b.Status == "closed" {
 			continue
 		}
@@ -209,6 +211,22 @@ func syncSessionBeadsWithSnapshot(
 	if err != nil {
 		fmt.Fprintf(stderr, "session beads: listing existing: %v\n", err) //nolint:errcheck
 		return nil, sessionBeads
+	}
+
+	// Repair session beads with empty types. The gc:session label (used by
+	// ListByLabel) is authoritative — if a bead has the label, it's a
+	// session bead. Empty types can occur after bd schema migrations or
+	// crashes that leave partially-written records.
+	for i, b := range existing {
+		if b.Type != "" || b.Status == "closed" {
+			continue
+		}
+		t := sessionBeadType
+		if err := store.Update(b.ID, beads.UpdateOpts{Type: &t}); err != nil {
+			fmt.Fprintf(stderr, "session beads: repairing type for %s: %v\n", b.ID, err) //nolint:errcheck
+		} else {
+			existing[i].Type = sessionBeadType
+		}
 	}
 
 	// Index by session_name for O(1) lookup. Skip closed beads — a closed
@@ -916,12 +934,14 @@ func setBeadRestartRequested(store beads.Store, sessionName string) error {
 	}
 	all, err := store.List(beads.ListQuery{
 		Label: sessionBeadLabel,
-		Type:  sessionBeadType,
 	})
 	if err != nil {
 		return fmt.Errorf("listing session beads: %w", err)
 	}
 	for _, b := range all {
+		if !session.IsSessionBeadOrRepairable(b) {
+			continue
+		}
 		if b.Status == "closed" {
 			continue
 		}
