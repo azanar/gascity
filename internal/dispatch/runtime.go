@@ -287,6 +287,11 @@ func reconcileTerminalScopedMember(store beads.Store, bead beads.Bead) (ControlR
 			return ControlResult{}, fmt.Errorf("%s: aborting scope: %w", bead.ID, err)
 		}
 		if body.Status != "closed" {
+			// Propagate non-gc.* member metadata (e.g., review.verdict) onto the
+			// scope body before closing, so diagnostics survive failure auto-close.
+			if err := propagateScopeMemberMetadata(store, rootID, scopeRef, body.ID); err != nil {
+				return ControlResult{}, fmt.Errorf("%s: propagating scope metadata: %w", bead.ID, err)
+			}
 			if err := setOutcomeAndClose(store, body.ID, "fail"); err != nil {
 				return ControlResult{}, fmt.Errorf("%s: completing scope body: %w", body.ID, err)
 			}
@@ -308,6 +313,9 @@ func reconcileTerminalScopedMember(store beads.Store, bead beads.Bead) (ControlR
 	}
 	if bodyAfter.Status == "closed" {
 		return ControlResult{}, nil
+	}
+	if err := propagateScopeMemberMetadata(store, rootID, scopeRef, body.ID); err != nil {
+		return ControlResult{}, fmt.Errorf("%s: propagating scope metadata: %w", bead.ID, err)
 	}
 	outputJSON, err := resolveScopeOutputJSON(store, rootID, scopeRef, bead)
 	if err != nil {
@@ -563,6 +571,22 @@ func setOutcomeAndClose(store beads.Store, beadID, outcome string) error {
 		Status:   &status,
 		Metadata: map[string]string{"gc.outcome": outcome},
 	})
+}
+
+// reconcileClosedScopeMember re-reads the just-closed bead and delegates to
+// reconcileTerminalScopedMember. Callers invoke it immediately after
+// setOutcomeAndClose, so this relies on the store being read-after-write
+// consistent (true for MemStore today). If a future store becomes eventually
+// consistent, pass the in-memory closed bead directly instead of re-reading.
+func reconcileClosedScopeMember(store beads.Store, beadID string) (ControlResult, error) {
+	closedBead, err := store.Get(beadID)
+	if err != nil {
+		return ControlResult{}, fmt.Errorf("%s: reloading closed scoped member: %w", beadID, err)
+	}
+	if closedBead.Status != "closed" {
+		return ControlResult{}, nil
+	}
+	return reconcileTerminalScopedMember(store, closedBead)
 }
 
 func matchesScopeRef(bead beads.Bead, scopeRef string) bool {

@@ -246,6 +246,167 @@ func TestProcessRetryControlSoftFailOnExhaustion(t *testing.T) {
 	}
 }
 
+func TestProcessRetryControlClosesEnclosingScopeOnFailure(t *testing.T) {
+	t.Parallel()
+	store := beads.NewMemStore()
+
+	root := mustCreate(t, store, beads.Bead{
+		Title:    "workflow",
+		Metadata: map[string]string{"gc.kind": "workflow"},
+	})
+	scopeBody := mustCreate(t, store, beads.Bead{
+		Title: "review iteration",
+		Metadata: map[string]string{
+			"gc.kind":         "scope",
+			"gc.root_bead_id": root.ID,
+			"gc.step_ref":     "mol-test.review-loop.iteration.2",
+			"gc.scope_role":   "body",
+		},
+	})
+	control := mustCreate(t, store, beads.Bead{
+		Title: "apply fixes",
+		Metadata: map[string]string{
+			"gc.kind":             "retry",
+			"gc.root_bead_id":     root.ID,
+			"gc.step_ref":         "mol-test.review-loop.iteration.2.apply-fixes",
+			"gc.step_id":          "apply-fixes",
+			"gc.scope_ref":        "mol-test.review-loop.iteration.2",
+			"gc.scope_role":       "member",
+			"gc.max_attempts":     "3",
+			"gc.on_exhausted":     "hard_fail",
+			"gc.source_step_spec": `{"id":"apply-fixes","title":"Apply fixes","type":"task","retry":{"max_attempts":3}}`,
+			"gc.control_epoch":    "1",
+		},
+	})
+	sibling := mustCreate(t, store, beads.Bead{
+		Title: "cleanup note",
+		Metadata: map[string]string{
+			"gc.kind":         "task",
+			"gc.root_bead_id": root.ID,
+			"gc.step_ref":     "mol-test.review-loop.iteration.2.cleanup-note",
+			"gc.scope_ref":    "mol-test.review-loop.iteration.2",
+			"gc.scope_role":   "member",
+		},
+	})
+	attempt1 := mustCreate(t, store, beads.Bead{
+		Title: "apply fixes attempt 1",
+		Metadata: map[string]string{
+			"gc.root_bead_id":   root.ID,
+			"gc.step_ref":       "mol-test.review-loop.iteration.2.apply-fixes.attempt.1",
+			"gc.attempt":        "1",
+			"gc.outcome":        "fail",
+			"gc.failure_class":  "hard",
+			"gc.failure_reason": "missing_review_artifact",
+		},
+	})
+	mustClose(t, store, attempt1.ID)
+	mustDep(t, store, control.ID, attempt1.ID, "blocks")
+	mustDep(t, store, scopeBody.ID, control.ID, "blocks")
+	mustDep(t, store, scopeBody.ID, sibling.ID, "blocks")
+
+	result, err := processRetryControl(store, mustGet(t, store, control.ID), ProcessOptions{})
+	if err != nil {
+		t.Fatalf("processRetryControl: %v", err)
+	}
+	if !result.Processed || result.Action != "hard-fail" {
+		t.Fatalf("result = %+v, want processed hard-fail", result)
+	}
+	if result.Skipped != 1 {
+		t.Fatalf("result.Skipped = %d, want 1", result.Skipped)
+	}
+
+	controlAfter := mustGet(t, store, control.ID)
+	if controlAfter.Status != "closed" || controlAfter.Metadata["gc.outcome"] != "fail" {
+		t.Fatalf("control = status %q outcome %q, want closed/fail", controlAfter.Status, controlAfter.Metadata["gc.outcome"])
+	}
+
+	scopeAfter := mustGet(t, store, scopeBody.ID)
+	if scopeAfter.Status != "closed" || scopeAfter.Metadata["gc.outcome"] != "fail" {
+		t.Fatalf("scope body = status %q outcome %q, want closed/fail", scopeAfter.Status, scopeAfter.Metadata["gc.outcome"])
+	}
+
+	siblingAfter := mustGet(t, store, sibling.ID)
+	if siblingAfter.Status != "closed" || siblingAfter.Metadata["gc.outcome"] != "skipped" {
+		t.Fatalf("sibling = status %q outcome %q, want closed/skipped", siblingAfter.Status, siblingAfter.Metadata["gc.outcome"])
+	}
+}
+
+func TestProcessRetryControlClosesEnclosingScopeOnPassAndPropagatesMetadata(t *testing.T) {
+	t.Parallel()
+	store := beads.NewMemStore()
+
+	root := mustCreate(t, store, beads.Bead{
+		Title:    "workflow",
+		Metadata: map[string]string{"gc.kind": "workflow"},
+	})
+	scopeBody := mustCreate(t, store, beads.Bead{
+		Title: "review iteration",
+		Metadata: map[string]string{
+			"gc.kind":         "scope",
+			"gc.root_bead_id": root.ID,
+			"gc.step_ref":     "mol-test.review-loop.iteration.2",
+			"gc.scope_role":   "body",
+		},
+	})
+	control := mustCreate(t, store, beads.Bead{
+		Title: "apply fixes",
+		Metadata: map[string]string{
+			"gc.kind":             "retry",
+			"gc.root_bead_id":     root.ID,
+			"gc.step_ref":         "mol-test.review-loop.iteration.2.apply-fixes",
+			"gc.step_id":          "apply-fixes",
+			"gc.scope_ref":        "mol-test.review-loop.iteration.2",
+			"gc.scope_role":       "member",
+			"gc.max_attempts":     "3",
+			"gc.on_exhausted":     "hard_fail",
+			"gc.source_step_spec": `{"id":"apply-fixes","title":"Apply fixes","type":"task","retry":{"max_attempts":3}}`,
+			"gc.control_epoch":    "1",
+		},
+	})
+	attempt1 := mustCreate(t, store, beads.Bead{
+		Title: "apply fixes attempt 1",
+		Metadata: map[string]string{
+			"gc.root_bead_id": root.ID,
+			"gc.step_ref":     "mol-test.review-loop.iteration.2.apply-fixes.attempt.1",
+			"gc.attempt":      "1",
+			"gc.outcome":      "pass",
+			"gc.output_json":  `{"verdict":"done"}`,
+			"review.verdict":  "done",
+			"review.summary":  "artifact restored",
+		},
+	})
+	mustClose(t, store, attempt1.ID)
+	mustDep(t, store, control.ID, attempt1.ID, "blocks")
+	mustDep(t, store, scopeBody.ID, control.ID, "blocks")
+
+	result, err := processRetryControl(store, mustGet(t, store, control.ID), ProcessOptions{})
+	if err != nil {
+		t.Fatalf("processRetryControl: %v", err)
+	}
+	if !result.Processed || result.Action != "pass" {
+		t.Fatalf("result = %+v, want processed pass", result)
+	}
+
+	controlAfter := mustGet(t, store, control.ID)
+	if controlAfter.Status != "closed" || controlAfter.Metadata["gc.outcome"] != "pass" {
+		t.Fatalf("control = status %q outcome %q, want closed/pass", controlAfter.Status, controlAfter.Metadata["gc.outcome"])
+	}
+
+	scopeAfter := mustGet(t, store, scopeBody.ID)
+	if scopeAfter.Status != "closed" || scopeAfter.Metadata["gc.outcome"] != "pass" {
+		t.Fatalf("scope body = status %q outcome %q, want closed/pass", scopeAfter.Status, scopeAfter.Metadata["gc.outcome"])
+	}
+	if scopeAfter.Metadata["gc.output_json"] != `{"verdict":"done"}` {
+		t.Fatalf("scope body gc.output_json = %q, want propagated output", scopeAfter.Metadata["gc.output_json"])
+	}
+	if scopeAfter.Metadata["review.verdict"] != "done" {
+		t.Fatalf("scope body review.verdict = %q, want done", scopeAfter.Metadata["review.verdict"])
+	}
+	if scopeAfter.Metadata["review.summary"] != "artifact restored" {
+		t.Fatalf("scope body review.summary = %q, want artifact restored", scopeAfter.Metadata["review.summary"])
+	}
+}
+
 func TestProcessRetryControlInvariantViolation(t *testing.T) {
 	t.Parallel()
 	store := beads.NewMemStore()
@@ -620,6 +781,122 @@ func TestFindLatestAttemptScopeCheckNotMatched(t *testing.T) {
 	}
 	if found.ID != realAttempt.ID {
 		t.Fatalf("findLatestAttempt returned %q, want %q (scope-check should be skipped)", found.ID, realAttempt.ID)
+	}
+}
+
+func TestProcessRalphControlClosesEnclosingScopeOnIterationFailure(t *testing.T) {
+	t.Parallel()
+	store := beads.NewMemStore()
+
+	root := mustCreate(t, store, beads.Bead{
+		Title:    "workflow",
+		Metadata: map[string]string{"gc.kind": "workflow"},
+	})
+	scopeBody := mustCreate(t, store, beads.Bead{
+		Title: "outer scope",
+		Metadata: map[string]string{
+			"gc.kind":         "scope",
+			"gc.root_bead_id": root.ID,
+			"gc.step_ref":     "mol-test.outer-scope",
+			"gc.scope_role":   "body",
+		},
+	})
+	control := mustCreate(t, store, beads.Bead{
+		Title: "review loop",
+		Metadata: map[string]string{
+			"gc.kind":         "ralph",
+			"gc.root_bead_id": root.ID,
+			"gc.step_ref":     "mol-test.review-loop",
+			"gc.step_id":      "review-loop",
+			"gc.scope_ref":    "mol-test.outer-scope",
+			"gc.scope_role":   "member",
+			"gc.max_attempts": "1",
+		},
+	})
+	iteration := mustCreate(t, store, beads.Bead{
+		Title: "review loop iteration 1",
+		Metadata: map[string]string{
+			"gc.kind":         "scope",
+			"gc.root_bead_id": root.ID,
+			"gc.step_ref":     "mol-test.review-loop.iteration.1",
+			"gc.scope_role":   "body",
+			"gc.attempt":      "1",
+			"gc.outcome":      "fail",
+		},
+	})
+	mustClose(t, store, iteration.ID)
+	mustDep(t, store, control.ID, iteration.ID, "blocks")
+	mustDep(t, store, scopeBody.ID, control.ID, "blocks")
+
+	result, err := processRalphControl(store, mustGet(t, store, control.ID), ProcessOptions{})
+	if err != nil {
+		t.Fatalf("processRalphControl: %v", err)
+	}
+	if !result.Processed || result.Action != "fail" {
+		t.Fatalf("result = %+v, want processed fail", result)
+	}
+
+	controlAfter := mustGet(t, store, control.ID)
+	if controlAfter.Status != "closed" || controlAfter.Metadata["gc.outcome"] != "fail" {
+		t.Fatalf("control = status %q outcome %q, want closed/fail", controlAfter.Status, controlAfter.Metadata["gc.outcome"])
+	}
+
+	scopeAfter := mustGet(t, store, scopeBody.ID)
+	if scopeAfter.Status != "closed" || scopeAfter.Metadata["gc.outcome"] != "fail" {
+		t.Fatalf("scope body = status %q outcome %q, want closed/fail", scopeAfter.Status, scopeAfter.Metadata["gc.outcome"])
+	}
+}
+
+// TestReconcileClosedScopeMemberRalphPass covers the pass-side symmetry of
+// TestProcessRalphControlClosesEnclosingScopeOnIterationFailure: when a scoped
+// ralph control closes with gc.outcome=pass, reconcileClosedScopeMember must
+// auto-close the enclosing scope body with outcome=pass. Exercises the wiring
+// on control.go:176-183 without running the full check pipeline (which would
+// require an executable check script).
+func TestReconcileClosedScopeMemberRalphPass(t *testing.T) {
+	t.Parallel()
+	store := beads.NewMemStore()
+
+	root := mustCreate(t, store, beads.Bead{
+		Title:    "workflow",
+		Metadata: map[string]string{"gc.kind": "workflow"},
+	})
+	scopeBody := mustCreate(t, store, beads.Bead{
+		Title: "outer scope",
+		Metadata: map[string]string{
+			"gc.kind":         "scope",
+			"gc.root_bead_id": root.ID,
+			"gc.step_ref":     "mol-test.outer-scope",
+			"gc.scope_role":   "body",
+		},
+	})
+	control := mustCreate(t, store, beads.Bead{
+		Title: "review loop",
+		Metadata: map[string]string{
+			"gc.kind":         "ralph",
+			"gc.root_bead_id": root.ID,
+			"gc.step_ref":     "mol-test.review-loop",
+			"gc.step_id":      "review-loop",
+			"gc.scope_ref":    "mol-test.outer-scope",
+			"gc.scope_role":   "member",
+			"gc.max_attempts": "3",
+		},
+	})
+	mustDep(t, store, scopeBody.ID, control.ID, "blocks")
+
+	// Simulate the terminal-pass close that processRalphControl performs
+	// at control.go:176 after a check returns GatePass.
+	if err := setOutcomeAndClose(store, control.ID, "pass"); err != nil {
+		t.Fatalf("setOutcomeAndClose: %v", err)
+	}
+
+	if _, err := reconcileClosedScopeMember(store, control.ID); err != nil {
+		t.Fatalf("reconcileClosedScopeMember: %v", err)
+	}
+
+	scopeAfter := mustGet(t, store, scopeBody.ID)
+	if scopeAfter.Status != "closed" || scopeAfter.Metadata["gc.outcome"] != "pass" {
+		t.Fatalf("scope body = status %q outcome %q, want closed/pass", scopeAfter.Status, scopeAfter.Metadata["gc.outcome"])
 	}
 }
 
