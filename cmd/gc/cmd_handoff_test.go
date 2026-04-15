@@ -123,6 +123,62 @@ func TestHandoffMissingSubject(t *testing.T) {
 	}
 }
 
+func TestHandoffNamedSessionSkipsRestart(t *testing.T) {
+	store := beads.NewMemStore()
+	rec := events.NewFake()
+	dops := newFakeDrainOps()
+	var stdout, stderr bytes.Buffer
+
+	// Seed a named session bead so isCurrentSessionNamed returns true.
+	_, err := store.Create(beads.Bead{
+		Title:  "mayor session",
+		Labels: []string{sessionBeadLabel},
+		Metadata: map[string]string{
+			"session_name":              "gc-city-mayor",
+			"configured_named_session":  "true",
+			"configured_named_identity": "mayor",
+		},
+	})
+	if err != nil {
+		t.Fatalf("seeding session bead: %v", err)
+	}
+
+	code := doHandoff(store, rec, dops, "mayor", "gc-city-mayor",
+		[]string{"context cycle"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+
+	// Mail bead should be created.
+	all, _ := store.List()
+	var mailBeads []beads.Bead
+	for _, b := range all {
+		if b.Type == "message" {
+			mailBeads = append(mailBeads, b)
+		}
+	}
+	if len(mailBeads) != 1 {
+		t.Fatalf("got %d mail beads, want 1", len(mailBeads))
+	}
+
+	// Restart must NOT be requested for named sessions.
+	if dops.restartRequested["gc-city-mayor"] {
+		t.Error("restart-requested should not be set for named sessions")
+	}
+
+	// No SessionDraining event.
+	for _, e := range rec.Events {
+		if e.Type == events.SessionDraining {
+			t.Error("SessionDraining event should not be recorded for named sessions")
+		}
+	}
+
+	// Stdout should mention skipping restart.
+	if !strings.Contains(stdout.String(), "skipping restart") {
+		t.Errorf("stdout = %q, want 'skipping restart' message", stdout.String())
+	}
+}
+
 func TestHandoffNotInSessionContext(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	cmd := newHandoffCmd(&stdout, &stderr)

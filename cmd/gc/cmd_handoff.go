@@ -126,6 +126,15 @@ func doHandoff(store beads.Store, rec events.Recorder, dops drainOps,
 		Payload: mailEventPayload(nil),
 	})
 
+	// Named sessions (human-attended, e.g. mayor) cannot be restarted by the
+	// controller — only a human can reopen them. Skip the restart request so
+	// the process stays alive; the handoff mail will be delivered on the next
+	// UserPromptSubmit hook cycle.
+	if named, _ := isCurrentSessionNamed(store, sessionName); named {
+		fmt.Fprintf(stdout, "Handoff: sent mail %s, skipping restart (named session)\n", b.ID) //nolint:errcheck // best-effort stdout
+		return 0
+	}
+
 	if err := dops.setRestartRequested(sessionName); err != nil {
 		fmt.Fprintf(stderr, "gc handoff: setting restart flag: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -196,6 +205,25 @@ func doHandoffRemote(store beads.Store, rec events.Recorder, sp runtime.Provider
 
 	fmt.Fprintf(stdout, "Handoff: sent mail %s to %s, killed session (reconciler will restart)\n", b.ID, targetAddress) //nolint:errcheck // best-effort stdout
 	return 0
+}
+
+// isCurrentSessionNamed reports whether the session identified by sessionName
+// is a named (human-attended) session. Named sessions cannot be restarted by
+// the controller, so handoff should skip the restart request for them.
+func isCurrentSessionNamed(store beads.Store, sessionName string) (bool, error) {
+	all, err := store.ListByLabel(sessionBeadLabel, 0)
+	if err != nil {
+		return false, err
+	}
+	for _, b := range all {
+		if b.Status == "closed" {
+			continue
+		}
+		if b.Metadata["session_name"] == sessionName {
+			return isNamedSessionBead(b), nil
+		}
+	}
+	return false, nil
 }
 
 // handoffThreadID generates a unique thread ID for handoff messages.
