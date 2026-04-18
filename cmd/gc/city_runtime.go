@@ -933,13 +933,19 @@ func sweepUndesiredPoolSessionBeads(
 			continue
 		}
 		// Don't sweep beads that haven't had their tmux started yet — their
-		// work assignment window hasn't opened. Mirrors the same guard in
-		// reapStaleSessionBeads. Without this, a pool's freshly-created
+		// work assignment window hasn't opened. Mirrors the reconciler's
+		// sessionStartRequested signals (`state=creating` +
+		// `pending_create_claim`). Without this, a pool's freshly-created
 		// session bead gets swept on the same tick it's created (no work
 		// assigned → GCSweepSessionBeads closes it), spinning the pool in a
-		// rapid create→sweep→recreate loop.
+		// rapid create→sweep→recreate loop. The `staleCreatingStateTimeout`
+		// bound matches sessionStartRequested's symmetric age guard: a bead
+		// genuinely wedged in `creating` past the timeout must remain
+		// sweepable so other reconcilers can recover or replace it.
 		if bead.Metadata["state"] == "creating" || strings.TrimSpace(bead.Metadata["pending_create_claim"]) == "true" {
-			continue
+			if bead.CreatedAt.IsZero() || time.Since(bead.CreatedAt) < staleCreatingStateTimeout {
+				continue
+			}
 		}
 		// Age grace period for the post-creating, pre-wake window. After
 		// session_lifecycle_parallel flips state from "creating" to
@@ -947,13 +953,28 @@ func sweepUndesiredPoolSessionBeads(
 		// before the wake pipeline records last_woke_at. Sweeping that
 		// window produces the same spin as sweeping during creation —
 		// we observed pool sessions with state=active, last_woke=empty
-		// getting closed with close_reason=stale-session before wake ever
-		// landed. Beads that actually drained/stopped keep state values
-		// like "drained"/"asleep"/"failed-create" and are still eligible
-		// for sweep; only pin the active-but-never-woke transient window.
-		// staleCreatingStateTimeout (1m) matches reapStaleSessionBeads'
+		// getting closed before wake ever landed.
+		//
+		// The guard must only match the post-create window, not crash/
+		// churn/start-failure paths that ALSO clear last_woke_at
+		// (checkStability in session_reconcile.go, checkChurn, and the
+		// start-failure branch in session_lifecycle_parallel.go all clear
+		// last_woke_at on a bead that may already be state=active). We
+		// distinguish the post-create window by requiring:
+		//   - state_reason=="creation_complete" (last state transition came
+		//     from the wake commit, not a crash clear)
+		//   - wake_attempts=="0" and churn_count=="0" (no prior crash/churn
+		//     cleared last_woke_at — recordWakeFailure/recordChurn both
+		//     increment these before clearing last_woke_at)
+		// Beads that actually drained/stopped keep state values like
+		// "drained"/"asleep"/"failed-create" and remain sweepable.
+		// staleCreatingStateTimeout (1m) mirrors sessionStartRequested's
 		// symmetric age guard.
-		if bead.Metadata["state"] == "active" && strings.TrimSpace(bead.Metadata["last_woke_at"]) == "" {
+		if bead.Metadata["state"] == "active" &&
+			strings.TrimSpace(bead.Metadata["last_woke_at"]) == "" &&
+			bead.Metadata["state_reason"] == "creation_complete" &&
+			isZeroOrEmpty(bead.Metadata["wake_attempts"]) &&
+			isZeroOrEmpty(bead.Metadata["churn_count"]) {
 			if !bead.CreatedAt.IsZero() && time.Since(bead.CreatedAt) < staleCreatingStateTimeout {
 				continue
 			}
@@ -966,6 +987,15 @@ func sweepUndesiredPoolSessionBeads(
 		candidates = append(candidates, bead)
 	}
 	return len(GCSweepSessionBeads(store, candidates, assignedWorkBeads))
+}
+
+// isZeroOrEmpty reports whether a metadata counter is absent or explicitly "0".
+// Non-numeric values return false so unexpected content fails closed (the
+// post-create protection is only granted when we're certain no prior
+// crash/churn cycle cleared last_woke_at).
+func isZeroOrEmpty(v string) bool {
+	v = strings.TrimSpace(v)
+	return v == "" || v == "0"
 }
 
 func (cr *CityRuntime) controlDispatcherTick(ctx context.Context) {

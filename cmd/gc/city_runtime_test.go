@@ -195,6 +195,179 @@ func TestSweepUndesiredPoolSessionBeads_SkipsRecentlyCreated(t *testing.T) {
 	}
 }
 
+// Stale creating-state beads (CreatedAt older than staleCreatingStateTimeout)
+// MUST be sweepable. Without this, a bead wedged in `creating` past the
+// timeout would be permanently immune from this sweep path, breaking the
+// symmetry with sessionStartRequested.
+func TestSweepUndesiredPoolSessionBeads_SweepsStaleCreatingState(t *testing.T) {
+	store := beads.NewMemStore()
+	bead, err := store.Create(beads.Bead{
+		Title:  "worker",
+		Type:   sessionBeadType,
+		Labels: []string{sessionBeadLabel, "agent:worker"},
+		Metadata: map[string]string{
+			"session_name":         "worker-bd-stale",
+			"template":             "worker",
+			"agent_name":           "worker",
+			"pool_slot":            "1",
+			poolManagedMetadataKey: boolMetadata(true),
+			"state":                "creating",
+			"continuation_epoch":   "1",
+			"generation":           "1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	bead.CreatedAt = time.Now().Add(-2 * time.Minute)
+	sessionBeads := newSessionBeadSnapshot([]beads.Bead{bead})
+
+	closed := sweepUndesiredPoolSessionBeads(
+		store,
+		sessionBeads,
+		nil,
+		nil,
+		&config.City{Agents: []config.Agent{{Name: "worker", MinActiveSessions: intPtr(0), MaxActiveSessions: intPtr(2)}}},
+		runtime.NewFake(),
+		false,
+	)
+	if closed != 1 {
+		t.Fatalf("closed = %d, want 1 — stale creating bead must be sweepable", closed)
+	}
+}
+
+// Stale post-creating beads (state=active, last_woke_at="", CreatedAt older
+// than staleCreatingStateTimeout) MUST be sweepable. Without this, the grace
+// window would never expire.
+func TestSweepUndesiredPoolSessionBeads_SweepsLongStuckActiveWithoutWake(t *testing.T) {
+	store := beads.NewMemStore()
+	bead, err := store.Create(beads.Bead{
+		Title:  "worker",
+		Type:   sessionBeadType,
+		Labels: []string{sessionBeadLabel, "agent:worker"},
+		Metadata: map[string]string{
+			"session_name":         "worker-bd-stale-active",
+			"template":             "worker",
+			"agent_name":           "worker",
+			"pool_slot":            "1",
+			poolManagedMetadataKey: boolMetadata(true),
+			"state":                "active",
+			"state_reason":         "creation_complete",
+			"continuation_epoch":   "1",
+			"generation":           "1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	bead.CreatedAt = time.Now().Add(-2 * time.Minute)
+	sessionBeads := newSessionBeadSnapshot([]beads.Bead{bead})
+
+	closed := sweepUndesiredPoolSessionBeads(
+		store,
+		sessionBeads,
+		nil,
+		nil,
+		&config.City{Agents: []config.Agent{{Name: "worker", MinActiveSessions: intPtr(0), MaxActiveSessions: intPtr(2)}}},
+		runtime.NewFake(),
+		false,
+	)
+	if closed != 1 {
+		t.Fatalf("closed = %d, want 1 — bead beyond staleCreatingStateTimeout must be sweepable", closed)
+	}
+}
+
+// Crashed beads (state=active, last_woke_at="" cleared by checkStability,
+// wake_attempts>=1) MUST be sweepable. The post-create grace window is
+// gated on no prior wake attempts; checkStability/checkChurn/start-failure
+// paths all increment wake_attempts or churn_count before clearing
+// last_woke_at, so a crashed bead cannot masquerade as post-create.
+func TestSweepUndesiredPoolSessionBeads_SweepsCrashedActiveBead(t *testing.T) {
+	store := beads.NewMemStore()
+	bead, err := store.Create(beads.Bead{
+		Title:  "worker",
+		Type:   sessionBeadType,
+		Labels: []string{sessionBeadLabel, "agent:worker"},
+		Metadata: map[string]string{
+			"session_name":         "worker-bd-crashed",
+			"template":             "worker",
+			"agent_name":           "worker",
+			"pool_slot":            "1",
+			poolManagedMetadataKey: boolMetadata(true),
+			// Crashed-after-wake signature: state still active because the
+			// reconciler hasn't transitioned it yet, state_reason still
+			// "creation_complete" from the last successful start, but
+			// last_woke_at cleared by checkStability after recording a
+			// wake failure. The bead is young enough that the unguarded
+			// age check would protect it.
+			"state":              "active",
+			"state_reason":       "creation_complete",
+			"last_woke_at":       "",
+			"wake_attempts":      "1",
+			"continuation_epoch": "1",
+			"generation":         "1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	sessionBeads := newSessionBeadSnapshot([]beads.Bead{bead})
+
+	closed := sweepUndesiredPoolSessionBeads(
+		store,
+		sessionBeads,
+		nil,
+		nil,
+		&config.City{Agents: []config.Agent{{Name: "worker", MinActiveSessions: intPtr(0), MaxActiveSessions: intPtr(2)}}},
+		runtime.NewFake(),
+		false,
+	)
+	if closed != 1 {
+		t.Fatalf("closed = %d, want 1 — crashed bead (wake_attempts>0) must not be protected", closed)
+	}
+}
+
+// Churned beads (state=active, last_woke_at="" cleared by checkChurn,
+// churn_count>=1) MUST be sweepable for the same reason as crashed beads.
+func TestSweepUndesiredPoolSessionBeads_SweepsChurnedActiveBead(t *testing.T) {
+	store := beads.NewMemStore()
+	bead, err := store.Create(beads.Bead{
+		Title:  "worker",
+		Type:   sessionBeadType,
+		Labels: []string{sessionBeadLabel, "agent:worker"},
+		Metadata: map[string]string{
+			"session_name":         "worker-bd-churned",
+			"template":             "worker",
+			"agent_name":           "worker",
+			"pool_slot":            "1",
+			poolManagedMetadataKey: boolMetadata(true),
+			"state":                "active",
+			"state_reason":         "creation_complete",
+			"last_woke_at":         "",
+			"churn_count":          "1",
+			"continuation_epoch":   "1",
+			"generation":           "1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	sessionBeads := newSessionBeadSnapshot([]beads.Bead{bead})
+
+	closed := sweepUndesiredPoolSessionBeads(
+		store,
+		sessionBeads,
+		nil,
+		nil,
+		&config.City{Agents: []config.Agent{{Name: "worker", MinActiveSessions: intPtr(0), MaxActiveSessions: intPtr(2)}}},
+		runtime.NewFake(),
+		false,
+	)
+	if closed != 1 {
+		t.Fatalf("closed = %d, want 1 — churned bead (churn_count>0) must not be protected", closed)
+	}
+}
+
 func TestSweepUndesiredPoolSessionBeads_SkipsPendingCreateClaim(t *testing.T) {
 	store := beads.NewMemStore()
 	bead, err := store.Create(beads.Bead{
