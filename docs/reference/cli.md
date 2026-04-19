@@ -292,6 +292,18 @@ List all cities registered with the machine-wide supervisor.
 gc cities
 ```
 
+| Subcommand | Description |
+|------------|-------------|
+| [gc cities list](#gc-cities-list) | List registered cities |
+
+## gc cities list
+
+List registered cities
+
+```
+gc cities list
+```
+
 ## gc config
 
 Inspect, validate, and debug the resolved city configuration.
@@ -1592,7 +1604,8 @@ Register an external project directory as a rig.
 Initializes beads database, installs agent hooks if configured,
 generates cross-rig routes, and appends the rig to city.toml.
 If the target directory doesn't exist, it is created. Use --include
-to apply a pack directory that defines the rig's agent configuration.
+to apply a pack directory that defines the rig's agent configuration;
+repeat the flag to compose multiple packs for one rig.
 
 Use --name to set the rig name explicitly (default: directory basename).
 Use --prefix to set the bead ID prefix explicitly (default: derived from name).
@@ -1614,6 +1627,7 @@ gc rig add /path/to/project
   gc rig add /path/to/project --name myrig
   gc rig add /path/to/project --prefix r1
   gc rig add ./my-project --include packs/gastown
+  gc rig add ./my-project --include packs/planner --include packs/architect
   gc rig add ./my-project --include packs/gastown --start-suspended
   gc rig add /path/to/existing --adopt
 ```
@@ -1621,7 +1635,7 @@ gc rig add /path/to/project
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--adopt` | bool |  | adopt existing .beads/ directory (skip init) |
-| `--include` | string |  | pack directory for rig agents |
+| `--include` | stringArray |  | pack directory for rig agents (repeatable) |
 | `--name` | string |  | rig name (default: directory basename) |
 | `--prefix` | string |  | bead ID prefix (default: derived from name) |
 | `--start-suspended` | bool |  | add rig in suspended state (dormant-by-default) |
@@ -2196,6 +2210,7 @@ List skills visible to the current city.
 
 Output includes:
   - City pack skills (skills/&lt;name&gt;/SKILL.md under the city root)
+  - Imported pack shared skills (binding-qualified, e.g. ops.code-review)
   - Bootstrap implicit-import pack skills (e.g. core)
   - With --agent/--session: that agent's agents/&lt;name&gt;/skills/ catalog
 
@@ -2216,7 +2231,7 @@ gc skill
 
 ## gc skill list
 
-List the current city pack's visible skills, optionally scoped to an agent or session.
+List the current shared and agent-local visible skills, optionally scoped to an agent or session.
 
 ```
 gc skill list [flags]
