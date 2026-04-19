@@ -245,9 +245,9 @@ func writeStandaloneControllerConflict(stderr io.Writer, commandName, cityPath s
 		authority = fmt.Sprintf("standalone controller PID %d", pid)
 	}
 	nextCommand := "gc stop " + shellQuotePath(cityPath) + " && " + supervisorRetryCommand(commandName, cityPath)
-	fmt.Fprintf(stderr,
+	_, _ = fmt.Fprintf(stderr,
 		"%s: standalone controller already running for %s%s; supervisor cannot manage this city until it stops\n",
-		commandName, shellQuotePath(cityPath), pidSuffix) //nolint:errcheck // best-effort stderr
+		commandName, shellQuotePath(cityPath), pidSuffix)
 	fmt.Fprintf(stderr, "%s: Authority: %s\n", commandName, authority) //nolint:errcheck // best-effort stderr
 	fmt.Fprintf(stderr, "%s: Next: %s\n", commandName, nextCommand)    //nolint:errcheck // best-effort stderr
 }
