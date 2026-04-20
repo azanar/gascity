@@ -126,6 +126,137 @@ func TestDiscoverPackDoctors_BadManifest(t *testing.T) {
 	}
 }
 
+func TestDiscoverPackDoctors_SiblingFixScriptAutoDiscovered(t *testing.T) {
+	dir := t.TempDir()
+	packDir := filepath.Join(dir, "mypk")
+
+	// Pure convention: run.sh + sibling fix.sh, no doctor.toml.
+	writeTestFile(t, packDir, "doctor/binaries/run.sh", "#!/bin/sh\nexit 0\n")
+	writeTestFile(t, packDir, "doctor/binaries/fix.sh", "#!/bin/sh\nexit 0\n")
+
+	got, err := DiscoverPackDoctors(fsys.OSFS{}, packDir, "mypk")
+	if err != nil {
+		t.Fatalf("DiscoverPackDoctors: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d checks, want 1", len(got))
+	}
+	wantFix := filepath.Join(packDir, "doctor", "binaries", "fix.sh")
+	if got[0].FixScript != wantFix {
+		t.Fatalf("FixScript = %q, want %q (sibling convention)",
+			got[0].FixScript, wantFix)
+	}
+}
+
+func TestDiscoverPackDoctors_NoSiblingFixScript(t *testing.T) {
+	dir := t.TempDir()
+	packDir := filepath.Join(dir, "mypk")
+
+	// Only run.sh — no sibling fix.sh and no manifest.
+	writeTestFile(t, packDir, "doctor/binaries/run.sh", "#!/bin/sh\nexit 0\n")
+
+	got, err := DiscoverPackDoctors(fsys.OSFS{}, packDir, "mypk")
+	if err != nil {
+		t.Fatalf("DiscoverPackDoctors: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d checks, want 1", len(got))
+	}
+	if got[0].FixScript != "" {
+		t.Fatalf("FixScript = %q, want empty (no sibling fix.sh)",
+			got[0].FixScript)
+	}
+}
+
+func TestDiscoverPackDoctors_ManifestFixScript(t *testing.T) {
+	dir := t.TempDir()
+	packDir := filepath.Join(dir, "mypk")
+
+	writeTestFile(t, packDir, "doctor/binaries/doctor.toml", `
+description = "Check required binaries"
+run = "check.sh"
+fix = "fix.sh"
+`)
+	writeTestFile(t, packDir, "doctor/binaries/check.sh", "#!/bin/sh\nexit 0\n")
+	writeTestFile(t, packDir, "doctor/binaries/fix.sh", "#!/bin/sh\nexit 0\n")
+
+	got, err := DiscoverPackDoctors(fsys.OSFS{}, packDir, "mypk")
+	if err != nil {
+		t.Fatalf("DiscoverPackDoctors: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d checks, want 1", len(got))
+	}
+	wantFix := filepath.Join(packDir, "doctor", "binaries", "fix.sh")
+	if got[0].FixScript != wantFix {
+		t.Fatalf("FixScript = %q, want %q", got[0].FixScript, wantFix)
+	}
+}
+
+func TestDiscoverPackDoctors_FixScriptAbsentWhenNotDeclared(t *testing.T) {
+	dir := t.TempDir()
+	packDir := filepath.Join(dir, "mypk")
+
+	// doctor.toml with only run — no fix declared.
+	writeTestFile(t, packDir, "doctor/binaries/doctor.toml", `
+description = "Diagnostic only"
+run = "check.sh"
+`)
+	writeTestFile(t, packDir, "doctor/binaries/check.sh", "#!/bin/sh\nexit 0\n")
+
+	got, err := DiscoverPackDoctors(fsys.OSFS{}, packDir, "mypk")
+	if err != nil {
+		t.Fatalf("DiscoverPackDoctors: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d checks, want 1", len(got))
+	}
+	if got[0].FixScript != "" {
+		t.Fatalf("FixScript = %q, want empty (no fix declared)", got[0].FixScript)
+	}
+}
+
+func TestDiscoverPackDoctors_FixScriptMissingOnDisk(t *testing.T) {
+	dir := t.TempDir()
+	packDir := filepath.Join(dir, "mypk")
+
+	// fix declared but the fix script does not exist — fall back to
+	// diagnostic-only (FixScript empty) rather than failing discovery.
+	// Matches the pre-existing treatment of a missing run.sh file.
+	writeTestFile(t, packDir, "doctor/binaries/doctor.toml", `
+run = "check.sh"
+fix = "fix.sh"
+`)
+	writeTestFile(t, packDir, "doctor/binaries/check.sh", "#!/bin/sh\nexit 0\n")
+
+	got, err := DiscoverPackDoctors(fsys.OSFS{}, packDir, "mypk")
+	if err != nil {
+		t.Fatalf("DiscoverPackDoctors: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d checks, want 1", len(got))
+	}
+	if got[0].FixScript != "" {
+		t.Fatalf("FixScript = %q, want empty when file missing", got[0].FixScript)
+	}
+}
+
+func TestDiscoverPackDoctors_RejectsFixPathEscape(t *testing.T) {
+	dir := t.TempDir()
+	packDir := filepath.Join(dir, "mypk")
+
+	writeTestFile(t, packDir, "doctor/binaries/doctor.toml", `
+run = "check.sh"
+fix = "../../../outside.sh"
+`)
+	writeTestFile(t, packDir, "doctor/binaries/check.sh", "#!/bin/sh\nexit 0\n")
+
+	_, err := DiscoverPackDoctors(fsys.OSFS{}, packDir, "mypk")
+	if err == nil {
+		t.Fatal("DiscoverPackDoctors error = nil, want containment error for fix")
+	}
+}
+
 func TestDiscoverPackDoctors_PreservesPackDir(t *testing.T) {
 	dir := t.TempDir()
 	packDir := filepath.Join(dir, "mypk")

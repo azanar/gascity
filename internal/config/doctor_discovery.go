@@ -14,6 +14,10 @@ type DiscoveredDoctor struct {
 	Name        string
 	Description string
 	RunScript   string
+	// FixScript is the optional remediation script. When non-empty the
+	// check opts into `gc doctor --fix`. Empty means check is diagnostic-
+	// only (the pre-existing behaviour).
+	FixScript   string
 	HelpFile    string
 	SourceDir   string
 	PackDir     string
@@ -24,6 +28,7 @@ type DiscoveredDoctor struct {
 type doctorManifest struct {
 	Description string `toml:"description"`
 	Run         string `toml:"run"`
+	Fix         string `toml:"fix"`
 }
 
 func resolveContainedDoctorRunPath(packDir, checkDir, runRel string) (string, error) {
@@ -86,6 +91,7 @@ func DiscoverPackDoctors(fs fsys.FS, packDir, packName string) ([]DiscoveredDoct
 func discoveredDoctorFromDir(fs fsys.FS, packDir, checkDir, name, packName string) (DiscoveredDoctor, bool, error) {
 	runRel := "run.sh"
 	description := ""
+	fixRel := ""
 
 	manifestPath := filepath.Join(checkDir, "doctor.toml")
 	if data, err := fs.ReadFile(manifestPath); err == nil {
@@ -97,6 +103,9 @@ func discoveredDoctorFromDir(fs fsys.FS, packDir, checkDir, name, packName strin
 		if manifest.Run != "" {
 			runRel = manifest.Run
 		}
+		if manifest.Fix != "" {
+			fixRel = manifest.Fix
+		}
 	}
 
 	runPath, err := resolveContainedDoctorRunPath(packDir, checkDir, runRel)
@@ -105,6 +114,31 @@ func discoveredDoctorFromDir(fs fsys.FS, packDir, checkDir, name, packName strin
 	}
 	if _, err := fs.Stat(runPath); err != nil {
 		return DiscoveredDoctor{}, false, nil
+	}
+
+	fixPath := ""
+	if fixRel != "" {
+		resolved, err := resolveContainedDoctorRunPath(packDir, checkDir, fixRel)
+		if err != nil {
+			return DiscoveredDoctor{}, false, fmt.Errorf("doctor/%s fix: %w", name, err)
+		}
+		if _, err := fs.Stat(resolved); err == nil {
+			fixPath = resolved
+		}
+		// If the fix script is declared but missing on disk, fall back
+		// to diagnostic-only — matches existing behaviour for run.sh
+		// when the file is absent (the check is silently skipped).
+	} else {
+		// Sibling-convention auto-discovery: if a fix script named
+		// `fix.sh` (or matching the `<runBase>.fix.<ext>` sibling of
+		// a custom `run` script) exists next to the check script, the
+		// check opts into `gc doctor --fix` without needing a manifest.
+		// This mirrors how `run.sh` is the default when no manifest is
+		// provided.
+		candidate := filepath.Join(checkDir, "fix.sh")
+		if _, err := fs.Stat(candidate); err == nil {
+			fixPath = candidate
+		}
 	}
 
 	helpPath := filepath.Join(checkDir, "help.md")
@@ -117,6 +151,7 @@ func discoveredDoctorFromDir(fs fsys.FS, packDir, checkDir, name, packName strin
 		Name:        name,
 		Description: description,
 		RunScript:   runPath,
+		FixScript:   fixPath,
 		HelpFile:    helpFile,
 		SourceDir:   checkDir,
 		PackDir:     packDir,

@@ -230,6 +230,7 @@ func doDoctor(fix, verbose bool, stdout, stderr io.Writer) int {
 			d.Register(&doctor.PackScriptCheck{
 				CheckName: entry.PackName + ":" + entry.Name,
 				Script:    entry.RunScript,
+				FixScript: entry.FixScript,
 				PackDir:   entry.PackDir,
 				PackName:  entry.PackName,
 			})

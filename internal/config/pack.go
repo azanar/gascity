@@ -1902,17 +1902,28 @@ func appendDiscoveredCommands(dst []DiscoveredCommand, src ...DiscoveredCommand)
 
 func appendDiscoveredDoctors(dst []DiscoveredDoctor, src ...DiscoveredDoctor) []DiscoveredDoctor {
 	for _, check := range src {
-		duplicate := false
-		for _, existing := range dst {
+		duplicateIdx := -1
+		for i, existing := range dst {
 			if existing.Name == check.Name &&
 				existing.BindingName == check.BindingName &&
 				existing.RunScript == check.RunScript {
-				duplicate = true
+				duplicateIdx = i
 				break
 			}
 		}
-		if !duplicate {
+		if duplicateIdx < 0 {
 			dst = append(dst, check)
+			continue
+		}
+		// Duplicate detected (same Name + BindingName + RunScript). Merge
+		// complementary metadata so a richer source doesn't lose out to an
+		// earlier-appended sparse one. Specifically: a convention-discovered
+		// entry that lacks an explicit `fix` manifest still wins on Name
+		// dedup against a legacy [[doctor]] TOML entry for the same check
+		// that declares `fix = "..."`. Without this merge, CanFix would
+		// spuriously return false on the winning entry.
+		if dst[duplicateIdx].FixScript == "" && check.FixScript != "" {
+			dst[duplicateIdx].FixScript = check.FixScript
 		}
 	}
 	return dst
@@ -2041,10 +2052,16 @@ func legacyPackDoctors(entries []PackDoctorEntry, packDir, packName string) []Di
 			runScript = filepath.Join(packDir, runScript)
 		}
 
+		fixScript := entry.Fix
+		if fixScript != "" && !filepath.IsAbs(fixScript) {
+			fixScript = filepath.Join(packDir, fixScript)
+		}
+
 		out = append(out, DiscoveredDoctor{
 			Name:        entry.Name,
 			Description: entry.Description,
 			RunScript:   runScript,
+			FixScript:   fixScript,
 			SourceDir:   packDir,
 			PackDir:     packDir,
 			PackName:    packName,

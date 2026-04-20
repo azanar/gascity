@@ -3343,6 +3343,42 @@ name = "worker"
 	if entries[1].Entry.Description != "" {
 		t.Errorf("second Entry.Description = %q, want empty", entries[1].Entry.Description)
 	}
+
+	// Fix field defaults to empty when not declared (diagnostic-only check).
+	if entries[0].Entry.Fix != "" {
+		t.Errorf("Entry.Fix = %q, want empty when not declared", entries[0].Entry.Fix)
+	}
+}
+
+func TestPackDoctorEntriesParsesFixField(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "pack.toml", `
+[pack]
+name = "fixable"
+schema = 1
+
+[[doctor]]
+name = "check-with-fix"
+script = "doctor/check.sh"
+fix = "doctor/fix.sh"
+description = "Check that opts into auto-remediation"
+
+[[doctor]]
+name = "check-no-fix"
+script = "doctor/check2.sh"
+`)
+
+	entries := LoadPackDoctorEntries(fsys.OSFS{}, []string{dir})
+	if len(entries) != 2 {
+		t.Fatalf("got %d entries, want 2", len(entries))
+	}
+
+	if entries[0].Entry.Fix != "doctor/fix.sh" {
+		t.Errorf("Entry.Fix = %q, want %q", entries[0].Entry.Fix, "doctor/fix.sh")
+	}
+	if entries[1].Entry.Fix != "" {
+		t.Errorf("Entry.Fix without fix field = %q, want empty", entries[1].Entry.Fix)
+	}
 }
 
 func TestPackDoctorEntriesDeduplicatesDirs(t *testing.T) {

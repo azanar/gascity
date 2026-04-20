@@ -665,6 +665,13 @@ type PackDoctorEntry struct {
 	Script string `toml:"script" jsonschema:"required"`
 	// Description is an optional human-readable description of the check.
 	Description string `toml:"description,omitempty"`
+	// Fix is an optional path to a remediation script, relative to the
+	// pack directory. When set, the check opts into `gc doctor --fix`
+	// auto-remediation: the fix script is dispatched with the same
+	// environment contract as Script (GC_CITY_PATH, GC_PACK_DIR, pack
+	// runtime env). Exit 0 indicates successful remediation; non-zero
+	// exit is surfaced as a fix error and the check remains failed.
+	Fix string `toml:"fix,omitempty"`
 }
 
 // PackCommandEntry declares a CLI subcommand provided by a pack.
