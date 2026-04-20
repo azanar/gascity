@@ -325,7 +325,7 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 						agentCat = c
 					}
 				}
-				if frag := buildAssignedSkillsPromptFragment(cfgAgent, p.skillCatalog, agentCat); frag != "" {
+				if frag := buildAssignedSkillsPromptFragment(cfgAgent, p.sharedSkillCatalogForAgent(cfgAgent), agentCat); frag != "" {
 					prompt = prompt + "\n\n" + frag
 				}
 			}
@@ -376,7 +376,8 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 		if p.workspace != nil {
 			wsProvider = p.workspace.Provider
 		}
-		desired := effectiveSkillsForAgent(p.skillCatalog, cfgAgent, wsProvider, p.providers, p.stderr)
+		sharedCatalog, _ := p.sharedSkillCatalogSnapshotForAgent(cfgAgent)
+		desired := effectiveSkillsForAgent(sharedCatalog, cfgAgent, wsProvider, p.providers, p.stderr)
 		if len(desired) > 0 {
 			fpExtra = mergeSkillFingerprintEntries(fpExtra, desired)
 			if canonWorkDir != scopeRoot {
@@ -387,6 +388,14 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 				// templateNameFor returns cfgAgent.PoolName for pool
 				// instances and qualifiedName for singletons.
 				materializeAgent := templateNameFor(cfgAgent, qualifiedName)
+				if sharedCatalog != nil {
+					if snapshot, err := encodeSharedCatalogSnapshot(*sharedCatalog); err == nil {
+						if env == nil {
+							env = map[string]string{}
+						}
+						env[sharedSkillCatalogSnapshotEnvVar] = snapshot
+					}
+				}
 				expandedPreStart = appendMaterializeSkillsPreStart(expandedPreStart, materializeAgent, workDir)
 			}
 		}
