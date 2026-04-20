@@ -333,7 +333,9 @@ func TestBeginSessionDrain(t *testing.T) {
 		"generation":   "5",
 	})
 
-	beginSessionDrain(session, sp, dt, "idle", clk, 30*time.Second)
+	if transitioned := beginSessionDrain(session, sp, dt, "idle", clk, 30*time.Second); !transitioned {
+		t.Fatal("first beginSessionDrain = false, want true (state transition)")
+	}
 
 	ds := dt.get("b1")
 	if ds == nil {
@@ -363,8 +365,12 @@ func TestBeginSessionDrain_AlreadyDraining(t *testing.T) {
 		"generation":   "5",
 	})
 
-	beginSessionDrain(session, sp, dt, "idle", clk, 30*time.Second)
-	beginSessionDrain(session, sp, dt, "config-drift", clk, 60*time.Second)
+	if transitioned := beginSessionDrain(session, sp, dt, "idle", clk, 30*time.Second); !transitioned {
+		t.Fatal("first beginSessionDrain = false, want true (state transition)")
+	}
+	if transitioned := beginSessionDrain(session, sp, dt, "config-drift", clk, 60*time.Second); transitioned {
+		t.Error("second beginSessionDrain = true, want false (already draining)")
+	}
 
 	// Second drain should not overwrite first.
 	ds := dt.get("b1")

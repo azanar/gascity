@@ -113,6 +113,12 @@ func validateWorkDir(dir string) error {
 // beginSessionDrain initiates an async drain. Returns immediately.
 // The drainTracker stores in-memory state; advanceSessionDrains progresses it.
 //
+// Returns true when this call enqueued a new drain (a state transition) and
+// false when a drain was already enqueued for this session (no-op). Callers
+// that emit user-visible log lines or convergence events tied to the drain
+// MUST gate on the return value — otherwise those emissions fire every
+// reconciler tick for the life of a stuck drain.
+//
 // The interrupt signal (Ctrl-C) is NOT sent immediately. It is deferred to
 // the next reconciler tick via advanceSessionDrains. This gives the drain
 // one full tick to be canceled (e.g., if the session was falsely orphaned
@@ -125,9 +131,13 @@ func beginSessionDrain(
 	reason string,
 	clk clock.Clock,
 	timeout time.Duration,
-) {
+) bool {
+	name := session.Metadata["session_name"]
 	if dt.get(session.ID) != nil {
-		return // already draining
+		if os.Getenv("GC_TMUX_TRACE") == "1" {
+			log.Printf("[DRAIN-TRACE] beginSessionDrain session=%s reason=%s noop=already-draining", name, reason)
+		}
+		return false
 	}
 	gen, _ := strconv.Atoi(session.Metadata["generation"])
 
@@ -138,11 +148,11 @@ func beginSessionDrain(
 		generation: gen,
 	})
 
-	name := session.Metadata["session_name"]
 	if os.Getenv("GC_TMUX_TRACE") == "1" {
 		log.Printf("[DRAIN-TRACE] beginSessionDrain session=%s reason=%s", name, reason)
 	}
 	telemetry.RecordDrainTransition(context.Background(), name, reason, "begin")
+	return true
 }
 
 func drainReasonCancelable(reason string) bool {

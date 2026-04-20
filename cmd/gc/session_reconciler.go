@@ -372,18 +372,19 @@ func reconcileSessionBeadsTraced(
 					if configuredNames[name] {
 						reason = "suspended"
 					}
-					template := normalizedSessionTemplate(*session, cfg)
-					if template == "" {
-						template = session.Metadata["template"]
+					if beginSessionDrain(*session, sp, dt, reason, clk, defaultDrainTimeout) {
+						if trace != nil {
+							template := normalizedSessionTemplate(*session, cfg)
+							if template == "" {
+								template = session.Metadata["template"]
+							}
+							trace.recordDecision("reconciler.session.orphan_or_suspended", template, name, reason, "drain", traceRecordPayload{
+								"store_query_partial": storeQueryPartial,
+								"provider_alive":      providerAlive,
+							}, nil, "")
+						}
+						fmt.Fprintf(stdout, "Draining session '%s': %s\n", name, reason) //nolint:errcheck
 					}
-					if trace != nil {
-						trace.recordDecision("reconciler.session.orphan_or_suspended", template, name, reason, "drain", traceRecordPayload{
-							"store_query_partial": storeQueryPartial,
-							"provider_alive":      providerAlive,
-						}, nil, "")
-					}
-					beginSessionDrain(*session, sp, dt, reason, clk, defaultDrainTimeout)
-					fmt.Fprintf(stdout, "Draining session '%s': %s\n", name, reason) //nolint:errcheck
 				} else {
 					// Not running and not desired — close the bead.
 					reason := "orphaned"
@@ -749,20 +750,21 @@ func reconcileSessionBeadsTraced(
 						if ddt <= 0 {
 							ddt = defaultDrainTimeout
 						}
-						beginSessionDrain(*session, sp, dt, "config-drift", clk, ddt)
-						fmt.Fprintf(stdout, "Draining session '%s': config-drift\n", name) //nolint:errcheck
-						if trace != nil {
-							trace.recordDecision("reconciler.session.config_drift", tp.TemplateName, name, "config_drift", "drain", traceRecordPayload{
-								"stored_hash":  storedHash,
-								"current_hash": currentHash,
-							}, nil, "")
+						if beginSessionDrain(*session, sp, dt, "config-drift", clk, ddt) {
+							fmt.Fprintf(stdout, "Draining session '%s': config-drift\n", name) //nolint:errcheck
+							if trace != nil {
+								trace.recordDecision("reconciler.session.config_drift", tp.TemplateName, name, "config_drift", "drain", traceRecordPayload{
+									"stored_hash":  storedHash,
+									"current_hash": currentHash,
+								}, nil, "")
+							}
+							rec.Record(events.Event{
+								Type:    events.SessionDraining,
+								Actor:   "gc",
+								Subject: tp.DisplayName(),
+								Message: "config drift detected",
+							})
 						}
-						rec.Record(events.Event{
-							Type:    events.SessionDraining,
-							Actor:   "gc",
-							Subject: tp.DisplayName(),
-							Message: "config drift detected",
-						})
 						continue
 					}
 
@@ -986,12 +988,13 @@ func reconcileSessionBeadsTraced(
 					markIdleSleepPending(target.session, store)
 				}
 			}
-			beginSessionDrain(*target.session, sp, dt, reason, clk, defaultDrainTimeout)
-			fmt.Fprintf(stdout, "Draining session '%s': %s\n", target.session.Metadata["session_name"], reason) //nolint:errcheck
-			if trace != nil {
-				trace.recordDecision("reconciler.session.drain", target.tp.TemplateName, target.session.Metadata["session_name"], reason, "drain", traceRecordPayload{
-					"sleep_intent": intent,
-				}, nil, "")
+			if beginSessionDrain(*target.session, sp, dt, reason, clk, defaultDrainTimeout) {
+				fmt.Fprintf(stdout, "Draining session '%s': %s\n", target.session.Metadata["session_name"], reason) //nolint:errcheck
+				if trace != nil {
+					trace.recordDecision("reconciler.session.drain", target.tp.TemplateName, target.session.Metadata["session_name"], reason, "drain", traceRecordPayload{
+						"sleep_intent": intent,
+					}, nil, "")
+				}
 			}
 		}
 

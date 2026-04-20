@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -1730,6 +1731,36 @@ func TestReconcileSessionBeads_OrphanSessionDrained(t *testing.T) {
 	}
 	if ds.reason != "orphaned" {
 		t.Errorf("drain reason = %q, want %q", ds.reason, "orphaned")
+	}
+}
+
+// TestReconcileSessionBeads_OrphanDrainLogThrottled covers issue #855:
+// once a session is draining, the reconciler must not re-emit
+// "Draining session '...': orphaned" on every subsequent tick. The
+// drainTracker is idempotent, so a pre-existing drain entry means the
+// reconciler tick is a no-op with respect to state — the user-visible
+// log must reflect that.
+func TestReconcileSessionBeads_OrphanDrainLogThrottled(t *testing.T) {
+	env := newReconcilerTestEnv()
+	env.cfg = &config.City{Agents: []config.Agent{{Name: "other"}}}
+	_ = env.sp.Start(context.Background(), "orphan", runtime.Config{})
+	session := env.createSessionBead("orphan", "orphan")
+
+	// Simulate a drain that was begun on a prior tick and has not yet
+	// converged (e.g., in-progress work beads still assigned to the
+	// session block its bead from closing — the exact loop described
+	// in #855).
+	env.dt.set(session.ID, &drainState{
+		startedAt:  env.clk.Now(),
+		deadline:   env.clk.Now().Add(defaultDrainTimeout),
+		reason:     "orphaned",
+		generation: 1,
+	})
+
+	env.reconcile([]beads.Bead{session})
+
+	if got := env.stdout.String(); strings.Contains(got, "Draining session 'orphan'") {
+		t.Errorf("stdout contains redundant drain log on repeat tick:\n%s", got)
 	}
 }
 
