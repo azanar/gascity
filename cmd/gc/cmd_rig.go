@@ -307,7 +307,13 @@ func doRigAdd(fs fsys.FS, cityPath, rigPath string, includes []string, nameOverr
 	// "bd init: signal: killed" after the probe times out — an unhelpful
 	// failure mode for the common "register existing store" workflow.
 	if !reAdd && !adopt {
-		if fi, err := fs.Stat(filepath.Join(rigPath, ".beads")); err == nil && fi.IsDir() {
+		beadsPath := filepath.Join(rigPath, ".beads")
+		fi, err := fs.Stat(beadsPath)
+		if err != nil && !os.IsNotExist(err) {
+			fmt.Fprintf(stderr, "gc rig add: checking %s: %v\n", beadsPath, err) //nolint:errcheck // best-effort stderr
+			return 1
+		}
+		if err == nil && fi.IsDir() {
 			fmt.Fprintf(stderr, "gc rig add: %s/.beads already exists; "+ //nolint:errcheck // best-effort stderr
 				"use --adopt to register the existing store, or remove %s/.beads to reinitialize\n",
 				rigPath, rigPath)
