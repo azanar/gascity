@@ -236,6 +236,65 @@ func TestRunStage1MixedProvidersCreateSiblingSinks(t *testing.T) {
 	}
 }
 
+func TestRunStage1UsesCachedCatalogAfterSharedCatalogFailureAcrossRepeatedFailures(t *testing.T) {
+	clearGCEnv(t)
+	resetSkillCatalogCache()
+	cityPath := t.TempDir()
+	t.Setenv("GC_HOME", t.TempDir())
+
+	importRoot := filepath.Join(cityPath, "imports", "helper")
+	importSkills := filepath.Join(importRoot, "skills")
+	importLink := filepath.Join(cityPath, "imports", "helper-link")
+	writeSkillSource(t, filepath.Join(importSkills, "plan"))
+	if err := os.MkdirAll(filepath.Dir(importLink), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(importSkills, importLink); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+
+	cfg := &config.City{
+		Session: config.SessionConfig{Provider: "tmux"},
+		PackSkills: []config.DiscoveredSkillCatalog{{
+			SourceDir:   importLink,
+			BindingName: "helper",
+			PackName:    "helper",
+		}},
+		Agents: []config.Agent{
+			{Name: "mayor", Scope: "city", Provider: "claude"},
+		},
+	}
+
+	var stderr bytes.Buffer
+	if err := runStage1SkillMaterialization(cityPath, cfg, &stderr); err != nil {
+		t.Fatalf("baseline runStage1SkillMaterialization: %v", err)
+	}
+	link := filepath.Join(cityPath, ".claude", "skills", "helper.plan")
+	if _, err := os.Lstat(link); err != nil {
+		t.Fatalf("baseline shared symlink missing: %v", err)
+	}
+
+	replaceWithSelfSymlink(t, importLink)
+	stderr.Reset()
+	if err := runStage1SkillMaterialization(cityPath, cfg, &stderr); err != nil {
+		t.Fatalf("degraded runStage1SkillMaterialization: %v", err)
+	}
+	if _, err := os.Lstat(link); err != nil {
+		t.Fatalf("cached stage-1 materialization should preserve shared symlink, got %v", err)
+	}
+	if !strings.Contains(stderr.String(), "load shared skill catalog for city scope") {
+		t.Fatalf("stderr = %q, want shared catalog warning", stderr.String())
+	}
+
+	stderr.Reset()
+	if err := runStage1SkillMaterialization(cityPath, cfg, &stderr); err != nil {
+		t.Fatalf("second degraded runStage1SkillMaterialization: %v", err)
+	}
+	if _, err := os.Lstat(link); err != nil {
+		t.Fatalf("second repeated shared-root failure should still preserve shared symlink, got %v", err)
+	}
+}
+
 func TestCheckSkillCollisionsReturnsFormattedError(t *testing.T) {
 	clearGCEnv(t)
 	cityPath := t.TempDir()
@@ -388,7 +447,7 @@ func TestRunStage1MaterializesAgentLocalWhenSharedCatalogFails(t *testing.T) {
 	}
 }
 
-func TestRunStage1SharedCatalogFailurePrunesStaleSharedSymlink(t *testing.T) {
+func TestRunStage1SharedCatalogFailureKeepsLastGoodSharedSymlink(t *testing.T) {
 	clearGCEnv(t)
 	cityPath := t.TempDir()
 	t.Setenv("GC_HOME", t.TempDir())
@@ -428,8 +487,8 @@ func TestRunStage1SharedCatalogFailurePrunesStaleSharedSymlink(t *testing.T) {
 	if !strings.Contains(stderr.String(), "load shared skill catalog") {
 		t.Fatalf("stderr = %q, want shared catalog load warning", stderr.String())
 	}
-	if _, err := os.Lstat(link); !os.IsNotExist(err) {
-		t.Fatalf("stale shared symlink should be pruned on catalog failure, lstat err=%v", err)
+	if _, err := os.Lstat(link); err != nil {
+		t.Fatalf("cached stage-1 materialization should keep the last-good shared symlink, got %v", err)
 	}
 }
 
