@@ -55,7 +55,11 @@ func (c *CachingStore) nextReconcileDelay(now time.Time) time.Duration {
 		return 0
 	}
 
-	dueAt := c.lastFreshAt.Add(c.adaptiveIntervalLocked())
+	lastFullScanAt := c.stats.LastReconcileAt
+	if lastFullScanAt.IsZero() {
+		lastFullScanAt = c.lastFreshAt
+	}
+	dueAt := lastFullScanAt.Add(c.adaptiveIntervalLocked())
 	if !now.Before(dueAt) {
 		return 0
 	}
@@ -137,6 +141,7 @@ func (c *CachingStore) runReconciliation() {
 
 	c.beads = freshByID
 	c.deps = nextDeps
+	c.dirty = make(map[string]struct{})
 	c.syncFailures = 0
 	if c.state == cacheDegraded {
 		c.state = cacheLive

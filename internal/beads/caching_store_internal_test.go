@@ -350,6 +350,13 @@ func TestCachingStoreNextReconcileDelayUsesFreshnessWatchdog(t *testing.T) {
 		t.Fatalf("nextReconcileDelay(fresh) = %s, want 20s", got)
 	}
 
+	cache.stats.LastReconcileAt = time.Unix(70, 0)
+	cache.lastFreshAt = time.Unix(109, 0)
+	if got := cache.nextReconcileDelay(time.Unix(110, 0)); got != 0 {
+		t.Fatalf("nextReconcileDelay(stale full scan with fresh writes) = %s, want immediate reconcile", got)
+	}
+
+	cache.stats.LastReconcileAt = time.Time{}
 	cache.lastFreshAt = time.Unix(70, 0)
 	if got := cache.nextReconcileDelay(time.Unix(110, 0)); got != 0 {
 		t.Fatalf("nextReconcileDelay(stale) = %s, want immediate reconcile", got)
@@ -411,6 +418,124 @@ func TestCachingStoreCloseAllRefreshesOnlyActuallyClosedBeads(t *testing.T) {
 	}
 }
 
+func TestCachingStoreCloseAllRefreshesPartialSuccessBeforeReturningError(t *testing.T) {
+	t.Parallel()
+
+	backing := &partialCloseAllErrorStore{Store: NewMemStore()}
+	first, err := backing.Create(Bead{Title: "first"})
+	if err != nil {
+		t.Fatalf("Create first: %v", err)
+	}
+	second, err := backing.Create(Bead{Title: "second"})
+	if err != nil {
+		t.Fatalf("Create second: %v", err)
+	}
+
+	cache := NewCachingStoreForTest(backing, nil)
+	if err := cache.Prime(context.Background()); err != nil {
+		t.Fatalf("Prime: %v", err)
+	}
+
+	closed, err := cache.CloseAll([]string{first.ID, second.ID}, map[string]string{"source": "wave1"})
+	if err == nil {
+		t.Fatal("expected CloseAll error")
+	}
+	if closed != 1 {
+		t.Fatalf("closed = %d, want 1", closed)
+	}
+
+	gotFirst, err := cache.Get(first.ID)
+	if err != nil {
+		t.Fatalf("Get first: %v", err)
+	}
+	if gotFirst.Status != "closed" {
+		t.Fatalf("first status = %q, want closed", gotFirst.Status)
+	}
+	if gotFirst.Metadata["source"] != "wave1" {
+		t.Fatalf("first metadata = %v, want source=wave1", gotFirst.Metadata)
+	}
+	stats := cache.Stats()
+	if stats.State != "live" {
+		t.Fatalf("cache state = %q, want live", stats.State)
+	}
+}
+
+func TestCachingStoreCloseAllRefreshesNonPrefixPartialSuccess(t *testing.T) {
+	t.Parallel()
+
+	backing := &nonPrefixCloseAllErrorStore{Store: NewMemStore()}
+	first, err := backing.Create(Bead{Title: "first"})
+	if err != nil {
+		t.Fatalf("Create first: %v", err)
+	}
+	second, err := backing.Create(Bead{Title: "second"})
+	if err != nil {
+		t.Fatalf("Create second: %v", err)
+	}
+
+	cache := NewCachingStoreForTest(backing, nil)
+	if err := cache.Prime(context.Background()); err != nil {
+		t.Fatalf("Prime: %v", err)
+	}
+
+	closed, err := cache.CloseAll([]string{first.ID, second.ID}, map[string]string{"source": "wave1"})
+	if err == nil {
+		t.Fatal("expected CloseAll error")
+	}
+	if closed != 1 {
+		t.Fatalf("closed = %d, want 1", closed)
+	}
+
+	gotFirst, err := cache.Get(first.ID)
+	if err != nil {
+		t.Fatalf("Get first: %v", err)
+	}
+	if gotFirst.Status != "open" {
+		t.Fatalf("first status = %q, want open", gotFirst.Status)
+	}
+	gotSecond, err := cache.Get(second.ID)
+	if err != nil {
+		t.Fatalf("Get second: %v", err)
+	}
+	if gotSecond.Status != "closed" {
+		t.Fatalf("second status = %q, want closed", gotSecond.Status)
+	}
+	if gotSecond.Metadata["source"] != "wave1" {
+		t.Fatalf("second metadata = %v, want source=wave1", gotSecond.Metadata)
+	}
+}
+
+func TestCachingStoreCloseAllMarksRefreshFailuresDirty(t *testing.T) {
+	t.Parallel()
+
+	backing := &closeAllRefreshFailingStore{Store: NewMemStore()}
+	bead, err := backing.Create(Bead{Title: "first"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	cache := NewCachingStoreForTest(backing, nil)
+	if err := cache.Prime(context.Background()); err != nil {
+		t.Fatalf("Prime: %v", err)
+	}
+
+	backing.failGetID = bead.ID
+	closed, err := cache.CloseAll([]string{bead.ID}, nil)
+	if err == nil {
+		t.Fatal("expected CloseAll refresh error")
+	}
+	if closed != 1 {
+		t.Fatalf("closed = %d, want 1", closed)
+	}
+
+	if _, err := cache.List(ListQuery{AllowScan: true}); err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if backing.listCalls == 0 {
+		t.Fatal("List did not fall back to backing store after dirty refresh failure")
+	}
+}
+
 type refreshFailingStore struct {
 	Store
 	failNextGet bool
@@ -451,4 +576,67 @@ func (s *partialCloseAllStore) CloseAll(ids []string, metadata map[string]string
 		return 0, err
 	}
 	return 1, nil
+}
+
+type partialCloseAllErrorStore struct {
+	Store
+}
+
+func (s *partialCloseAllErrorStore) CloseAll(ids []string, metadata map[string]string) (int, error) {
+	if len(ids) == 0 {
+		return 0, errors.New("no ids")
+	}
+	if err := s.Store.SetMetadataBatch(ids[0], metadata); err != nil {
+		return 0, err
+	}
+	if err := s.Store.Close(ids[0]); err != nil {
+		return 0, err
+	}
+	return 1, errors.New("second close failed")
+}
+
+type nonPrefixCloseAllErrorStore struct {
+	Store
+}
+
+func (s *nonPrefixCloseAllErrorStore) CloseAll(ids []string, metadata map[string]string) (int, error) {
+	if len(ids) < 2 {
+		return 0, errors.New("need two ids")
+	}
+	if err := s.Store.SetMetadataBatch(ids[1], metadata); err != nil {
+		return 0, err
+	}
+	if err := s.Store.Close(ids[1]); err != nil {
+		return 0, err
+	}
+	return 1, errors.New("first close failed")
+}
+
+type closeAllRefreshFailingStore struct {
+	Store
+	failGetID string
+	listCalls int
+}
+
+func (s *closeAllRefreshFailingStore) Get(id string) (Bead, error) {
+	if id == s.failGetID {
+		s.failGetID = ""
+		return Bead{}, errors.New("refresh failed")
+	}
+	return s.Store.Get(id)
+}
+
+func (s *closeAllRefreshFailingStore) CloseAll(ids []string, metadata map[string]string) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	if err := s.Store.Close(ids[0]); err != nil {
+		return 0, err
+	}
+	return 1, nil
+}
+
+func (s *closeAllRefreshFailingStore) List(query ListQuery) ([]Bead, error) {
+	s.listCalls++
+	return s.Store.List(query)
 }

@@ -27,6 +27,7 @@ type CachingStore struct {
 	mu          sync.RWMutex
 	beads       map[string]Bead
 	deps        map[string][]Dep
+	dirty       map[string]struct{}
 	state       cacheState
 	lastFreshAt time.Time
 
@@ -94,6 +95,7 @@ func newCachingStore(backing Store, onChange func(eventType, beadID string, payl
 		backing:  backing,
 		beads:    make(map[string]Bead),
 		deps:     make(map[string][]Dep),
+		dirty:    make(map[string]struct{}),
 		onChange: onChange,
 		problemf: func(msg string) {
 			log.Printf("beads cache: %s", msg)
@@ -164,6 +166,7 @@ func (c *CachingStore) Prime(_ context.Context) error {
 	defer c.mu.Unlock()
 	c.beads = beadMap
 	c.deps = depMap
+	c.dirty = make(map[string]struct{})
 	c.state = cacheLive
 	c.syncFailures = 0
 	c.stats.SyncFailures = 0

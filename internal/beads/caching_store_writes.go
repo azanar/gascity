@@ -15,6 +15,7 @@ func (c *CachingStore) Create(b Bead) (Bead, error) {
 
 	c.mu.Lock()
 	c.beads[created.ID] = cloneBead(created)
+	delete(c.dirty, created.ID)
 	c.markFreshLocked(time.Now())
 	c.updateStatsLocked()
 	c.mu.Unlock()
@@ -33,9 +34,7 @@ func (c *CachingStore) Update(id string, opts UpdateOpts) error {
 	fresh, err := c.backing.Get(id)
 	if err != nil {
 		c.mu.Lock()
-		delete(c.beads, id)
-		delete(c.deps, id)
-		c.updateStatsLocked()
+		c.dirty[id] = struct{}{}
 		c.mu.Unlock()
 		c.recordProblem("refresh bead after update", fmt.Errorf("%s: %w", id, err))
 		return nil
@@ -43,6 +42,7 @@ func (c *CachingStore) Update(id string, opts UpdateOpts) error {
 
 	c.mu.Lock()
 	c.beads[id] = cloneBead(fresh)
+	delete(c.dirty, id)
 	c.markFreshLocked(time.Now())
 	c.updateStatsLocked()
 	c.mu.Unlock()
@@ -63,6 +63,7 @@ func (c *CachingStore) Close(id string) error {
 	if b, ok := c.beads[id]; ok {
 		b.Status = "closed"
 		c.beads[id] = b
+		delete(c.dirty, id)
 		closed = cloneBead(b)
 		found = true
 		c.markFreshLocked(time.Now())
@@ -79,7 +80,7 @@ func (c *CachingStore) Close(id string) error {
 // CloseAll closes multiple beads and sets metadata on each.
 func (c *CachingStore) CloseAll(ids []string, metadata map[string]string) (int, error) {
 	n, err := c.backing.CloseAll(ids, metadata)
-	if err != nil {
+	if err != nil && n == 0 {
 		return n, err
 	}
 
@@ -89,9 +90,11 @@ func (c *CachingStore) CloseAll(ids []string, metadata map[string]string) (int, 
 	}
 	refreshed := make([]refreshedBead, 0, len(ids))
 	var refreshErr error
+	refreshFailed := make(map[string]struct{})
 	for _, id := range ids {
 		fresh, getErr := c.backing.Get(id)
 		if getErr != nil {
+			refreshFailed[id] = struct{}{}
 			refreshErr = errors.Join(refreshErr, fmt.Errorf("refresh bead after close-all %s: %w", id, getErr))
 			continue
 		}
@@ -101,12 +104,15 @@ func (c *CachingStore) CloseAll(ids []string, metadata map[string]string) (int, 
 	notifications := make([]cacheNotification, 0, len(refreshed))
 	c.mu.Lock()
 	if refreshErr != nil {
-		c.state = cacheDegraded
 		c.recordProblemLocked("close-all refresh", refreshErr)
+	}
+	for id := range refreshFailed {
+		c.dirty[id] = struct{}{}
 	}
 	for _, item := range refreshed {
 		previous, hadPrevious := c.beads[item.id]
 		c.beads[item.id] = cloneBead(item.bead)
+		delete(c.dirty, item.id)
 		if item.bead.Status == "closed" {
 			delete(c.deps, item.id)
 		}
@@ -121,7 +127,7 @@ func (c *CachingStore) CloseAll(ids []string, metadata map[string]string) (int, 
 	c.updateStatsLocked()
 	c.mu.Unlock()
 	c.notifyChanges(notifications)
-	return n, refreshErr
+	return n, errors.Join(err, refreshErr)
 }
 
 // SetMetadata sets a single metadata key-value on a bead.
@@ -137,6 +143,7 @@ func (c *CachingStore) SetMetadata(id, key, value string) error {
 		}
 		b.Metadata[key] = value
 		c.beads[id] = b
+		delete(c.dirty, id)
 	}
 	c.markFreshLocked(time.Now())
 	c.updateStatsLocked()
@@ -159,6 +166,7 @@ func (c *CachingStore) SetMetadataBatch(id string, kvs map[string]string) error 
 			b.Metadata[k] = v
 		}
 		c.beads[id] = b
+		delete(c.dirty, id)
 	}
 	c.markFreshLocked(time.Now())
 	c.updateStatsLocked()
@@ -178,6 +186,7 @@ func (c *CachingStore) DepAdd(issueID, dependsOnID, depType string) error {
 		if d.DependsOnID == dependsOnID {
 			deps[i].Type = depType
 			c.deps[issueID] = deps
+			delete(c.dirty, issueID)
 			c.markFreshLocked(time.Now())
 			c.updateStatsLocked()
 			c.mu.Unlock()
@@ -185,6 +194,7 @@ func (c *CachingStore) DepAdd(issueID, dependsOnID, depType string) error {
 		}
 	}
 	c.deps[issueID] = append(deps, Dep{IssueID: issueID, DependsOnID: dependsOnID, Type: depType})
+	delete(c.dirty, issueID)
 	c.markFreshLocked(time.Now())
 	c.updateStatsLocked()
 	c.mu.Unlock()
@@ -202,6 +212,7 @@ func (c *CachingStore) DepRemove(issueID, dependsOnID string) error {
 	for i, d := range deps {
 		if d.DependsOnID == dependsOnID {
 			c.deps[issueID] = append(deps[:i], deps[i+1:]...)
+			delete(c.dirty, issueID)
 			break
 		}
 	}
@@ -220,6 +231,7 @@ func (c *CachingStore) Delete(id string) error {
 	c.mu.Lock()
 	delete(c.beads, id)
 	delete(c.deps, id)
+	delete(c.dirty, id)
 	c.markFreshLocked(time.Now())
 	c.updateStatsLocked()
 	c.mu.Unlock()

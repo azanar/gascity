@@ -492,6 +492,33 @@ func TestBdStoreCloseAllReturnsPartialCountAndErrorOnFallbackFailure(t *testing.
 	}
 }
 
+func TestBdStoreCloseAllFallbackSuccessReturnsNil(t *testing.T) {
+	batchErr := errors.New("batch close failed")
+	runner := fakeRunner(map[string]struct {
+		out []byte
+		err error
+	}{
+		`bd close --json bd-1 bd-2`: {
+			err: batchErr,
+		},
+		`bd close --json bd-1`: {
+			out: []byte(`[{"id":"bd-1","title":"one","status":"closed","issue_type":"task","created_at":"2025-01-15T10:30:00Z"}]`),
+		},
+		`bd close --json bd-2`: {
+			out: []byte(`[{"id":"bd-2","title":"two","status":"closed","issue_type":"task","created_at":"2025-01-15T10:30:00Z"}]`),
+		},
+	})
+
+	s := beads.NewBdStore("/city", runner)
+	closed, err := s.CloseAll([]string{"bd-1", "bd-2"}, nil)
+	if err != nil {
+		t.Fatalf("CloseAll returned error after successful fallback: %v", err)
+	}
+	if closed != 2 {
+		t.Fatalf("closed = %d, want 2", closed)
+	}
+}
+
 // --- List ---
 
 func TestBdStoreList(t *testing.T) {
@@ -536,6 +563,23 @@ func TestBdStoreListEmpty(t *testing.T) {
 	}
 }
 
+func TestBdStoreListEmptyOutputMeansNoBeads(t *testing.T) {
+	runner := fakeRunner(map[string]struct {
+		out []byte
+		err error
+	}{
+		`bd list --json --include-infra --include-gates --limit 0`: {out: []byte(" \n\t")},
+	})
+	s := beads.NewBdStore("/city", runner)
+	got, err := s.ListOpen()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Errorf("List() returned %d beads, want 0", len(got))
+	}
+}
+
 func TestBdStoreListError(t *testing.T) {
 	runner := func(_, _ string, _ ...string) ([]byte, error) {
 		return nil, fmt.Errorf("exit status 1")
@@ -550,7 +594,7 @@ func TestBdStoreListError(t *testing.T) {
 	}
 }
 
-func TestBdStoreListReturnsPartialResultsAndErrorOnCorruptEntries(t *testing.T) {
+func TestBdStoreListReturnsPartialResultsOnCorruptEntries(t *testing.T) {
 	runner := fakeRunner(map[string]struct {
 		out []byte
 		err error
@@ -568,14 +612,8 @@ func TestBdStoreListReturnsPartialResultsAndErrorOnCorruptEntries(t *testing.T) 
 	if len(got) != 1 || got[0].ID != "bd-good" {
 		t.Fatalf("ListOpen() = %v, want only bd-good", got)
 	}
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !strings.Contains(err.Error(), "skipped 1 corrupt bead") {
-		t.Fatalf("error = %q, want skipped-entry summary", err)
-	}
-	if !strings.Contains(err.Error(), "bd-bad") {
-		t.Fatalf("error = %q, want corrupt bead id", err)
+	if err != nil {
+		t.Fatalf("ListOpen() error = %v, want nil with usable partial results", err)
 	}
 }
 

@@ -3,6 +3,7 @@ package beads
 import (
 	"errors"
 	"fmt"
+	"time"
 )
 
 // List returns beads matching the query. Active-bead queries are served from
@@ -17,6 +18,10 @@ func (c *CachingStore) List(query ListQuery) ([]Bead, error) {
 	c.mu.RLock()
 	state := c.state
 	if state == cacheLive || state == cachePartial {
+		if len(c.dirty) > 0 {
+			c.mu.RUnlock()
+			return c.backing.List(query)
+		}
 		// PrimeActive loads the full active set (open + in_progress), so
 		// active-only queries are complete even before the history prime finishes.
 		cached := make([]Bead, 0, len(c.beads))
@@ -81,6 +86,20 @@ func (c *CachingStore) ListOpen(status ...string) ([]Bead, error) {
 func (c *CachingStore) Get(id string) (Bead, error) {
 	c.mu.RLock()
 	if c.state == cacheLive || c.state == cachePartial {
+		if _, ok := c.dirty[id]; ok {
+			c.mu.RUnlock()
+			fresh, err := c.backing.Get(id)
+			if err != nil {
+				return Bead{}, err
+			}
+			c.mu.Lock()
+			c.beads[id] = cloneBead(fresh)
+			delete(c.dirty, id)
+			c.markFreshLocked(time.Now())
+			c.updateStatsLocked()
+			c.mu.Unlock()
+			return fresh, nil
+		}
 		if b, ok := c.beads[id]; ok {
 			c.mu.RUnlock()
 			return cloneBead(b), nil
@@ -96,6 +115,10 @@ func (c *CachingStore) Get(id string) (Bead, error) {
 func (c *CachingStore) Ready() ([]Bead, error) {
 	c.mu.RLock()
 	if c.state == cacheLive {
+		if len(c.dirty) > 0 {
+			c.mu.RUnlock()
+			return c.backing.Ready()
+		}
 		statusByID := make(map[string]string, len(c.beads))
 		depsByID := make(map[string][]Dep, len(c.deps))
 		openBeads := make([]Bead, 0, len(c.beads))

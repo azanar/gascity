@@ -311,6 +311,9 @@ type bdIssue struct {
 // any entries that fail to parse (e.g. corrupt metadata with non-string values).
 // This prevents a single bad bead from breaking all list operations.
 func parseIssuesTolerant(data []byte) ([]bdIssue, error) {
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil, nil
+	}
 	var raw []json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parsing JSON: %w", err)
@@ -603,7 +606,7 @@ func (s *BdStore) CloseAll(ids []string, metadata map[string]string) (int, error
 	if err != nil {
 		// Fall back to individual closes on batch failure.
 		closed := 0
-		fallbackErr := fmt.Errorf("bd close batch: %w", err)
+		var fallbackErr error
 		for _, id := range ids {
 			if closeErr := s.Close(id); closeErr == nil {
 				closed++
@@ -611,7 +614,10 @@ func (s *BdStore) CloseAll(ids []string, metadata map[string]string) (int, error
 				fallbackErr = errors.Join(fallbackErr, closeErr)
 			}
 		}
-		return closed, fallbackErr
+		if fallbackErr != nil {
+			return closed, errors.Join(fmt.Errorf("bd close batch: %w", err), fallbackErr)
+		}
+		return closed, nil
 	}
 	return len(ids), nil
 }
@@ -701,6 +707,9 @@ func (s *BdStore) List(query ListQuery) ([]Bead, error) {
 	}
 	filtered := applyListQuery(result, query)
 	if parseErr != nil {
+		if len(filtered) > 0 {
+			return filtered, nil
+		}
 		return filtered, fmt.Errorf("bd list: %w", parseErr)
 	}
 	return filtered, nil
@@ -776,6 +785,9 @@ func (s *BdStore) Ready() ([]Bead, error) {
 		result = append(result, bead)
 	}
 	if parseErr != nil {
+		if len(result) > 0 {
+			return result, nil
+		}
 		return result, fmt.Errorf("bd ready: %w", parseErr)
 	}
 	return result, nil
