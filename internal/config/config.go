@@ -1313,6 +1313,8 @@ func (a *Agent) AttachEnabled() bool {
 // EffectiveWorkQuery returns the work query command for this agent.
 // If WorkQuery is set, returns it as-is. Otherwise returns the default:
 // "bd ready --metadata-field gc.routed_to=<template> --unassigned --json --limit=1"
+// with a fallback to check labels (pool:<template>) for beads dispatched
+// via `bd update --add-label pool:<pool>`.
 //
 // All agents use metadata-based routing via gc.routed_to. The template
 // name (QualifiedName or PoolName for rig-scoped instances) determines
@@ -1325,7 +1327,8 @@ func (a *Agent) EffectiveWorkQuery() string {
 	if a.PoolName != "" {
 		target = a.PoolName
 	}
-	return "bd ready --metadata-field gc.routed_to=" + target + " --unassigned --json --limit=1 2>/dev/null"
+	// Check metadata first, fall back to label
+	return "bd ready --metadata-field gc.routed_to=" + target + " --unassigned --json --limit=1 2>/dev/null || bd ready --label pool:" + target + " --unassigned --json --limit=1 2>/dev/null"
 }
 
 // EffectiveSlingQuery returns the sling query command template for this agent.
