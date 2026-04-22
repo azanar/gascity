@@ -1762,7 +1762,9 @@ func (a *Agent) AttachEnabled() bool {
 
 // EffectiveWorkQuery returns the work query command for this agent.
 // If WorkQuery is set, returns it as-is. Otherwise returns the default
-// three-tier query with multi-identifier assignee resolution.
+// three-tier query with multi-identifier assignee resolution. Tier 3 also
+// falls back to label-based routing (pool:<target>) for beads dispatched
+// via `bd update --add-label pool:<pool>`.
 //
 // Assignee resolution order: $GC_SESSION_ID (bead ID) > $GC_SESSION_NAME
 // (tmux session name) > $GC_ALIAS (named identity / qualified name).
@@ -1805,6 +1807,11 @@ func (a *Agent) EffectiveWorkQuery() string {
 			`*) exit 0 ;; ` +
 			`esac; ` +
 			`r=$(bd ready --metadata-field gc.routed_to=` + target +
+			` --unassigned --json --limit=1 2>/dev/null); ` +
+			`[ -n "$r" ] && [ "$r" != "[]" ] && printf "%s" "$r" && exit 0; ` +
+			// Tier 3.5: label-dispatched beads (pool:<target>) — fallback for beads
+			// routed via `bd update --add-label pool:<pool>` instead of metadata.
+			`r=$(bd ready --label pool:` + target +
 			` --unassigned --json --limit=1 2>/dev/null); ` +
 			`[ -n "$r" ] && [ "$r" != "[]" ] && printf "%s" "$r" && exit 0; ` +
 			// Tier 4: open routed molecule roots. scale_check already counts
