@@ -2427,3 +2427,31 @@ dolt.port: 3307
 		t.Fatalf("recoverCalls = %d, want 0", recoverCalls)
 	}
 }
+
+func TestBdRuntimeEnvForRigPinsRigBeadsDirWithoutCustomDoltConfig(t *testing.T) {
+	t.Setenv("GC_BEADS", "bd")
+
+	cityDir := t.TempDir()
+	rigDir := filepath.Join(cityDir, "rigs", "demo")
+	if err := os.MkdirAll(rigDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.City{
+		Rigs: []config.Rig{{
+			Name: "demo",
+			Path: rigDir,
+		}},
+	}
+
+	env := bdRuntimeEnvForRig(cityDir, cfg, rigDir)
+	if got := env["BEADS_DIR"]; got != filepath.Join(rigDir, ".beads") {
+		t.Fatalf("BEADS_DIR = %q, want %q", got, filepath.Join(rigDir, ".beads"))
+	}
+	if got := env["GC_RIG"]; got != "demo" {
+		t.Fatalf("GC_RIG = %q, want %q", got, "demo")
+	}
+	if got := env["GC_RIG_ROOT"]; got != rigDir {
+		t.Fatalf("GC_RIG_ROOT = %q, want %q", got, rigDir)
+	}
+}
