@@ -4,3 +4,8 @@ nudge = "Check your hook for work assignments."
 idle_timeout = "2h"
 min_active_sessions = 0
 max_active_sessions = 3
+# The maintenance pack qualifies this agent as "maintenance.dog" but all
+# dispatch uses the short name "dog". Pin routing to "dog" so scale_check
+# and work_query see the correct demand.
+scale_check = """ready=$(bd ready --metadata-field gc.routed_to=dog --unassigned --json 2>/dev/null | jq 'length' 2>/dev/null); active=$(bd list --metadata-field gc.routed_to=dog --status=in_progress --no-assignee --json 2>/dev/null | jq 'length' 2>/dev/null); molecules=$(bd list --metadata-field gc.routed_to=dog --status=open --type=molecule --no-assignee --json 2>/dev/null | jq 'length' 2>/dev/null); echo "$(( ${ready:-0} + ${active:-0} + ${molecules:-0} ))" || echo 0"""
+work_query = """sh -c 'for id in "$GC_SESSION_ID" "$GC_SESSION_NAME" "$GC_ALIAS"; do [ -z "$id" ] && continue; r=$(bd list --status in_progress --assignee="$id" --json --limit=1 2>/dev/null); [ -n "$r" ] && [ "$r" != "[]" ] && printf "%s" "$r" && exit 0; done; for id in "$GC_SESSION_ID" "$GC_SESSION_NAME" "$GC_ALIAS"; do [ -z "$id" ] && continue; r=$(bd ready --assignee="$id" --json --limit=1 2>/dev/null); [ -n "$r" ] && [ "$r" != "[]" ] && printf "%s" "$r" && exit 0; done; case "$GC_SESSION_ORIGIN" in ephemeral|"") ;; *) exit 0 ;; esac; r=$(bd ready --metadata-field gc.routed_to=dog --unassigned --json --limit=1 2>/dev/null); [ -n "$r" ] && [ "$r" != "[]" ] && printf "%s" "$r" && exit 0; r=$(bd ready --label pool:dog --unassigned --json --limit=1 2>/dev/null); [ -n "$r" ] && [ "$r" != "[]" ] && printf "%s" "$r" && exit 0; bd list --metadata-field gc.routed_to=dog --status=open --type=molecule --no-assignee --json --limit=1 2>/dev/null'"""
