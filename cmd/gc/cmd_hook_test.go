@@ -193,6 +193,7 @@ max = 5
 	origPath := os.Getenv("PATH")
 	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+origPath)
 	t.Setenv("GC_CITY", cityDir)
+	t.Setenv("GC_ALIAS", "")
 	t.Setenv("GC_AGENT", "myrig/polecat")
 
 	origWD, err := os.Getwd()
@@ -261,6 +262,7 @@ max = 5
 	origPath := os.Getenv("PATH")
 	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+origPath)
 	t.Setenv("GC_CITY", cityDir)
+	t.Setenv("GC_ALIAS", "")
 	t.Setenv("GC_AGENT", "myrig/polecat-1")
 	t.Setenv("GC_SESSION_NAME", "myrig--polecat-1")
 
@@ -313,6 +315,7 @@ name = "worker"
 	origPath := os.Getenv("PATH")
 	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+origPath)
 	t.Setenv("GC_CITY", cityDir)
+	t.Setenv("GC_ALIAS", "")
 	t.Setenv("GC_AGENT", "")
 	t.Setenv("GC_SESSION_NAME", "")
 
@@ -368,6 +371,7 @@ dir = "myrig"
 	origPath := os.Getenv("PATH")
 	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+origPath)
 	t.Setenv("GC_CITY", cityDir)
+	t.Setenv("GC_ALIAS", "")
 	t.Setenv("GC_DIR", rigDir)
 	t.Setenv("GC_AGENT", "")
 	t.Setenv("GC_SESSION_NAME", "")
