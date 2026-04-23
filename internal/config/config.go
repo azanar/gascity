@@ -1762,7 +1762,8 @@ func (a *Agent) AttachEnabled() bool {
 
 // EffectiveWorkQuery returns the work query command for this agent.
 // If WorkQuery is set, returns it as-is. Otherwise returns the default
-// three-tier query with multi-identifier assignee resolution.
+// three-tier query with multi-identifier assignee resolution plus a
+// legacy pool-label fallback for manually routed work.
 //
 // Assignee resolution order: $GC_SESSION_ID (bead ID) > $GC_SESSION_NAME
 // (tmux session name) > $GC_ALIAS (named identity / qualified name).
@@ -1804,12 +1805,15 @@ func (a *Agent) EffectiveWorkQuery() string {
 			`ephemeral|"") ;; ` +
 			`*) exit 0 ;; ` +
 			`esac; ` +
-			`r=$(bd ready --metadata-field gc.routed_to=` + target +
-			` --unassigned --json --limit=1 2>/dev/null); ` +
-			`[ -n "$r" ] && [ "$r" != "[]" ] && printf "%s" "$r" && exit 0; ` +
-			// Tier 4: open routed molecule roots. scale_check already counts
-			// these, so startup must be able to see them too.
-			`bd list --metadata-field gc.routed_to=` + target +
+		`r=$(bd ready --metadata-field gc.routed_to=` + target +
+		` --unassigned --json --limit=1 2>/dev/null); ` +
+		`[ -n "$r" ] && [ "$r" != "[]" ] && printf "%s" "$r" && exit 0; ` +
+		`r=$(bd ready --label pool:` + target +
+		` --unassigned --json --limit=1 2>/dev/null); ` +
+		`[ -n "$r" ] && [ "$r" != "[]" ] && printf "%s" "$r" && exit 0; ` +
+		// Tier 4: open routed molecule roots. scale_check already counts
+		// these, so startup must be able to see them too.
+		`bd list --metadata-field gc.routed_to=` + target +
 			` --status=open --type=molecule --no-assignee --json --limit=1 2>/dev/null'`
 	}
 	return `sh -c '` +
@@ -1843,6 +1847,9 @@ func (a *Agent) EffectiveWorkQuery() string {
 		`*) exit 0 ;; ` +
 		`esac; ` +
 		`r=$(bd ready --metadata-field gc.routed_to=` + target +
+		` --unassigned --json --limit=1 2>/dev/null); ` +
+		`[ -n "$r" ] && [ "$r" != "[]" ] && printf "%s" "$r" && exit 0; ` +
+		`r=$(bd ready --label pool:` + target +
 		` --unassigned --json --limit=1 2>/dev/null); ` +
 		`[ -n "$r" ] && [ "$r" != "[]" ] && printf "%s" "$r" && exit 0; ` +
 		`bd ready --metadata-field gc.routed_to=` + legacyTarget +
