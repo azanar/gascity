@@ -134,8 +134,8 @@ data_dir: %q
 
 behavior:
   auto_gc_behavior:
-    enable: true
-    archive_level: 1
+    enable: false
+    archive_level: 0
 `, logLevel, port, host, dataDir)
 	if err := fsys.WriteFileAtomic(fsys.OSFS{}, path, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write config file: %w", err)

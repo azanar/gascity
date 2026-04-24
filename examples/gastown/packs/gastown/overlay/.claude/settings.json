@@ -18,10 +18,6 @@
           {
             "type": "command",
             "command": "gc prime"
-          },
-          {
-            "type": "command",
-            "command": "gc handoff \"context cycle\""
           }
         ]
       }
