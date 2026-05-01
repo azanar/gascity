@@ -174,7 +174,28 @@ func slingOnFormula(opts SlingOpts, deps SlingDeps, querier BeadQuerier, beadID 
 		}
 		result.WispRootID = wispRootID
 		result.FormulaName = opts.OnFormula
-		return finalize(opts, deps, beadID, method, result)
+		sr, err := finalize(opts, deps, beadID, method, result)
+		if err != nil {
+			return sr, err
+		}
+		// Route the molecule itself so polecat can discover it via work_query.
+		// Without this, the molecule root has no gc.routed_to metadata and remains
+		// invisible to workers even though the work bead is routed.
+		if wispRootID != "" && deps.Router != nil {
+			rigDir := SlingDirForBead(deps.Cfg, deps.CityPath, wispRootID)
+			slingEnv := ResolveSlingEnv(a, deps)
+			req := RouteRequest{
+				BeadID:  wispRootID,
+				Target:  a.QualifiedName(),
+				WorkDir: rigDir,
+				Env:     slingEnv,
+			}
+			if routeErr := deps.Router.Route(context.Background(), req); routeErr != nil {
+				sr.MetadataErrors = append(sr.MetadataErrors,
+					fmt.Sprintf("routing molecule %s: %v", wispRootID, routeErr))
+			}
+		}
+		return sr, nil
 	}
 	runGraph := func() (pendingSourceWorkflowLaunch, error) {
 		mResult, err := InstantiateSlingFormula(context.Background(), opts.OnFormula, SlingFormulaSearchPaths(deps, a), molecule.Options{
@@ -232,7 +253,28 @@ func slingDefaultFormula(opts SlingOpts, deps SlingDeps, querier BeadQuerier, be
 		}
 		result.WispRootID = wispRootID
 		result.FormulaName = defaultFormula
-		return finalize(opts, deps, beadID, method, result)
+		sr, err := finalize(opts, deps, beadID, method, result)
+		if err != nil {
+			return sr, err
+		}
+		// Route the molecule itself so workers can discover it via work_query.
+		// Without this, the molecule root has no gc.routed_to metadata and remains
+		// invisible to workers even though the work bead is routed.
+		if wispRootID != "" && deps.Router != nil {
+			rigDir := SlingDirForBead(deps.Cfg, deps.CityPath, wispRootID)
+			slingEnv := ResolveSlingEnv(a, deps)
+			req := RouteRequest{
+				BeadID:  wispRootID,
+				Target:  a.QualifiedName(),
+				WorkDir: rigDir,
+				Env:     slingEnv,
+			}
+			if routeErr := deps.Router.Route(context.Background(), req); routeErr != nil {
+				sr.MetadataErrors = append(sr.MetadataErrors,
+					fmt.Sprintf("routing molecule %s: %v", wispRootID, routeErr))
+			}
+		}
+		return sr, nil
 	}
 	runGraph := func() (pendingSourceWorkflowLaunch, error) {
 		mResult, err := InstantiateSlingFormula(context.Background(), defaultFormula, SlingFormulaSearchPaths(deps, a), molecule.Options{
