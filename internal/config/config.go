@@ -1762,7 +1762,9 @@ func (a *Agent) AttachEnabled() bool {
 
 // EffectiveWorkQuery returns the work query command for this agent.
 // If WorkQuery is set, returns it as-is. Otherwise returns the default
-// four-tier query with multi-identifier assignee resolution and pool label fallback.
+// three-tier query with multi-identifier assignee resolution. Tier 3 also
+// falls back to label-based routing (pool:<target>) for beads dispatched
+// via `bd update --add-label pool:<pool>`.
 //
 // Assignee resolution order: $GC_SESSION_ID (bead ID) > $GC_SESSION_NAME
 // (tmux session name) > $GC_ALIAS (named identity / qualified name).
@@ -1798,8 +1800,7 @@ func (a *Agent) EffectiveWorkQuery() string {
 			`r=$(bd ready --assignee="$id" --json --limit=1 2>/dev/null); ` +
 			`[ -n "$r" ] && [ "$r" != "[]" ] && printf "%s" "$r" && exit 0; ` +
 			`done; ` +
-			// Tier 3: ready unassigned routed to this config (shared routed queue),
-			// with pool label fallback for beads dispatched via bd update --add-label pool:<pool>.
+			// Tier 3: ready unassigned routed to this config (shared routed queue).
 			// Only ephemeral sessions and controller probes consume generic config demand.
 			`case "$GC_SESSION_ORIGIN" in ` +
 			`ephemeral|"") ;; ` +
@@ -1808,6 +1809,8 @@ func (a *Agent) EffectiveWorkQuery() string {
 			`r=$(bd ready --metadata-field gc.routed_to=` + target +
 			` --unassigned --json --limit=1 2>/dev/null); ` +
 			`[ -n "$r" ] && [ "$r" != "[]" ] && printf "%s" "$r" && exit 0; ` +
+			// Tier 3.5: label-dispatched beads (pool:<target>) — fallback for beads
+			// routed via `bd update --add-label pool:<pool>` instead of metadata.
 			`r=$(bd ready --label pool:` + target +
 			` --unassigned --json --limit=1 2>/dev/null); ` +
 			`[ -n "$r" ] && [ "$r" != "[]" ] && printf "%s" "$r" && exit 0; ` +

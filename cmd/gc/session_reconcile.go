@@ -673,9 +673,10 @@ func recordChurn(session *beads.Bead, store beads.Store, clk clock.Clock) {
 	if count >= defaultMaxChurnCycles {
 		qUntil := clk.Now().Add(defaultQuarantineDuration).UTC().Format(time.RFC3339)
 		batch := map[string]string{
-			"churn_count":       strconv.Itoa(count),
-			"quarantined_until": qUntil,
-			"sleep_reason":      "context-churn",
+			"churn_count":          strconv.Itoa(count),
+			"quarantined_until":    qUntil,
+			"sleep_reason":         "context-churn",
+			"pending_create_claim": "",
 		}
 		if err := store.SetMetadataBatch(session.ID, batch); err == nil {
 			for k, v := range batch {

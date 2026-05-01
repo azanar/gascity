@@ -53,3 +53,8 @@ mode = "always"
 template = "refinery"
 scope = "rig"
 mode = "on_demand"
+
+[[named_session]]
+template = "polecat"
+scope = "rig"
+mode = "on_demand"

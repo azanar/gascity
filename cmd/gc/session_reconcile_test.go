@@ -1982,7 +1982,8 @@ func TestRecordChurn_Quarantine(t *testing.T) {
 	store := newTestStore()
 
 	session := makeBead("b1", map[string]string{
-		"churn_count": "2", // one below threshold (defaultMaxChurnCycles=3)
+		"churn_count":          "2", // one below threshold (defaultMaxChurnCycles=3)
+		"pending_create_claim": "true",
 	})
 
 	recordChurn(&session, store, clk)
@@ -1995,6 +1996,9 @@ func TestRecordChurn_Quarantine(t *testing.T) {
 	}
 	if session.Metadata["sleep_reason"] != "context-churn" {
 		t.Errorf("sleep_reason = %q, want context-churn", session.Metadata["sleep_reason"])
+	}
+	if session.Metadata["pending_create_claim"] != "" {
+		t.Errorf("pending_create_claim = %q, want cleared when churn quarantine abandons the create attempt", session.Metadata["pending_create_claim"])
 	}
 }
 

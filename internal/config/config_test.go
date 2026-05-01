@@ -1288,12 +1288,12 @@ func TestPoolRoundTrip(t *testing.T) {
 func TestEffectiveWorkQueryDefault(t *testing.T) {
 	a := Agent{Name: "mayor"}
 	got := a.EffectiveWorkQuery()
-	// Tiered query: check tier 1-2 (assignee resolution), tier 3 (routed_to + pool label fallback).
+	// Tiered query: check tier 3 (routed_to), tier 3.5 (label fallback), and tier 1-2 (assignee resolution).
 	if !strings.Contains(got, "bd ready --metadata-field gc.routed_to=mayor --unassigned --json --limit=1") {
 		t.Errorf("EffectiveWorkQuery() missing tier 3 routed_to: %q", got)
 	}
 	if !strings.Contains(got, "bd ready --label pool:mayor --unassigned --json --limit=1") {
-		t.Errorf("EffectiveWorkQuery() missing tier 3 pool label fallback: %q", got)
+		t.Errorf("EffectiveWorkQuery() missing tier 3.5 label fallback: %q", got)
 	}
 	if !strings.Contains(got, `"$GC_SESSION_ID" "$GC_SESSION_NAME" "$GC_ALIAS"`) {
 		t.Errorf("EffectiveWorkQuery() missing multi-identifier resolution: %q", got)
@@ -1316,7 +1316,7 @@ func TestEffectiveWorkQueryWithDir(t *testing.T) {
 		t.Errorf("EffectiveWorkQuery() missing tier 3 routed_to: %q", got)
 	}
 	if !strings.Contains(got, "bd ready --label pool:hello-world/polecat --unassigned --json --limit=1") {
-		t.Errorf("EffectiveWorkQuery() missing tier 3 pool label fallback: %q", got)
+		t.Errorf("EffectiveWorkQuery() missing tier 3.5 label fallback: %q", got)
 	}
 }
 
@@ -1327,7 +1327,7 @@ func TestEffectiveWorkQueryPoolDefault(t *testing.T) {
 		t.Errorf("EffectiveWorkQuery() missing tier 3 routed_to: %q", got)
 	}
 	if !strings.Contains(got, "bd ready --label pool:hello-world/polecat --unassigned --json --limit=1") {
-		t.Errorf("EffectiveWorkQuery() missing tier 3 pool label fallback: %q", got)
+		t.Errorf("EffectiveWorkQuery() missing tier 3.5 label fallback: %q", got)
 	}
 	if !strings.Contains(got, "bd list --metadata-field gc.routed_to=hello-world/polecat --status=open --type=molecule --no-assignee --json --limit=1") {
 		t.Errorf("EffectiveWorkQuery() missing tier 4 molecule route: %q", got)
@@ -1383,7 +1383,7 @@ func TestEffectiveWorkQueryPoolNameOverride(t *testing.T) {
 		t.Errorf("EffectiveWorkQuery() missing tier 3 routed_to with pool name: %q", got)
 	}
 	if !strings.Contains(got, "bd ready --label pool:hello-world/dog --unassigned --json --limit=1") {
-		t.Errorf("EffectiveWorkQuery() missing tier 3 pool label fallback with pool name: %q", got)
+		t.Errorf("EffectiveWorkQuery() missing tier 3.5 label fallback with pool name: %q", got)
 	}
 	if !strings.Contains(got, "bd list --metadata-field gc.routed_to=hello-world/dog --status=open --type=molecule --no-assignee --json --limit=1") {
 		t.Errorf("EffectiveWorkQuery() missing tier 4 molecule route with pool name: %q", got)
@@ -1397,7 +1397,7 @@ func TestEffectiveWorkQueryPoolNoPoolName(t *testing.T) {
 		t.Errorf("EffectiveWorkQuery() missing tier 3 routed_to: %q", got)
 	}
 	if !strings.Contains(got, "bd ready --label pool:hello-world/dog --unassigned --json --limit=1") {
-		t.Errorf("EffectiveWorkQuery() missing tier 3 pool label fallback: %q", got)
+		t.Errorf("EffectiveWorkQuery() missing tier 3.5 label fallback: %q", got)
 	}
 }
 
