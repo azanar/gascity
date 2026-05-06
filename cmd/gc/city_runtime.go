@@ -94,6 +94,10 @@ type runtimeDemandSnapshot struct {
 	result             DesiredStateResult
 }
 
+var cityRuntimeHealthBeadsProvider = healthBeadsProvider
+var cityRuntimeManagedDoltLifecycleOwned = managedDoltLifecycleOwned
+var cityRuntimeCurrentManagedDoltPort = currentManagedDoltPort
+
 // CityRuntimeParams holds the caller-provided parameters for creating a
 // CityRuntime. Internal components (crashTracker, etc.) are built by the
 // constructor from these inputs.
@@ -158,6 +162,8 @@ func newCityRuntime(p CityRuntimeParams) *CityRuntime {
 		wg = newWispGC(p.Cfg.Daemon.WispGCIntervalDuration(),
 			p.Cfg.Daemon.WispTTLDuration())
 	}
+
+	ensureManagedDoltPublishedForRuntime(p.CityPath, p.Stderr, p.LogPrefix)
 
 	// Sweep orphaned order-tracking beads on startup only (not config reload).
 	// A previous controller instance may have left tracking beads open
@@ -392,9 +398,11 @@ func (cr *CityRuntime) run(ctx context.Context) {
 			}
 		}()
 
+		cr.ensureManagedDoltPublishedForTick()
+
 		// Reap stale session beads from a previous run before building desired
 		// state, so desired state does not reference already-closed beads (#742).
-		if reapStaleSessionBeads(cr.cityBeadStore(), cr.sp, cr.sessionDrains, clock.Real{}, cr.stderr) > 0 {
+		if reapStaleSessionBeadsWithMode(cr.cityBeadStore(), cr.sp, cr.sessionDrains, clock.Real{}, cr.stderr, true) > 0 {
 			sessionBeads = cr.loadSessionBeadSnapshot()
 		}
 		result := cr.buildDesiredState(sessionBeads, startupTrace)
@@ -669,6 +677,7 @@ func (cr *CityRuntime) tick(
 	// Post-reconcile sync was intentionally removed: the daemon's next tick
 	// corrects bead state, and the pre-reconcile sync is sufficient for
 	// the reconciler to read/write hashes during reconciliation.
+	cr.ensureManagedDoltPublishedForTick()
 	// Reap open session beads whose tmux session is dead before loading demand
 	// so stale names cannot block desired-state computation (#742).
 	if reapStaleSessionBeads(cr.cityBeadStore(), cr.sp, cr.sessionDrains, clock.Real{}, cr.stderr) > 0 {
@@ -1505,6 +1514,8 @@ func (cr *CityRuntime) controlDispatcherTick(ctx context.Context) {
 		return
 	}
 
+	cr.ensureManagedDoltPublishedForTick()
+
 	sessionBeads := cr.loadSessionBeadSnapshot()
 	wfcResult := buildDesiredStateWithSessionBeads(
 		cr.cityName,
@@ -1566,6 +1577,26 @@ func (cr *CityRuntime) controlDispatcherTick(ctx context.Context) {
 		cr.stderr,
 	)
 	cr.requestDeferredDrainFollowUpTick()
+}
+
+func (cr *CityRuntime) ensureManagedDoltPublishedForTick() {
+	ensureManagedDoltPublishedForRuntime(cr.cityPath, cr.stderr, cr.logPrefix)
+}
+
+func ensureManagedDoltPublishedForRuntime(cityPath string, stderr io.Writer, logPrefix string) {
+	if !cityUsesBdStoreContract(cityPath) {
+		return
+	}
+	owned, err := cityRuntimeManagedDoltLifecycleOwned(cityPath)
+	if err != nil || !owned {
+		return
+	}
+	if cityRuntimeCurrentManagedDoltPort(cityPath) != "" {
+		return
+	}
+	if err := cityRuntimeHealthBeadsProvider(cityPath); err != nil {
+		fmt.Fprintf(stderr, "%s: managed dolt health preflight: %v\n", logPrefix, err) //nolint:errcheck // best-effort stderr
+	}
 }
 
 // syncBeadsAndUpdateIndex runs syncSessionBeads.
