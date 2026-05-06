@@ -180,3 +180,52 @@ func TestWakeSessionRequestsStartForContinuityEligibleArchivedBead(t *testing.T)
 		t.Fatalf("wait status/state = %q/%q, want closed/canceled", updatedWait.Status, updatedWait.Metadata["state"])
 	}
 }
+
+func TestWakeSessionCreatingRecordsExplicitWakeReason(t *testing.T) {
+	store := beads.NewMemStore()
+	sessionBead, err := store.Create(beads.Bead{
+		Type:   BeadType,
+		Labels: []string{LabelSession},
+		Metadata: map[string]string{
+			"state":                "creating",
+			"state_reason":         "config-drift",
+			"pending_create_claim": "true",
+			"quarantined_until":    time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+			"sleep_reason":         "quarantine",
+			"wake_attempts":        "3",
+			"churn_count":          "2",
+		},
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	if _, err := WakeSession(store, sessionBead, time.Now().UTC()); err != nil {
+		t.Fatalf("WakeSession: %v", err)
+	}
+
+	updated, err := store.Get(sessionBead.ID)
+	if err != nil {
+		t.Fatalf("Get(session): %v", err)
+	}
+	if got := updated.Metadata["state"]; got != string(StateCreating) {
+		t.Fatalf("state = %q, want creating", got)
+	}
+	if got := updated.Metadata["state_reason"]; got != "explicit" {
+		t.Fatalf("state_reason = %q, want explicit", got)
+	}
+	if got := updated.Metadata["pending_create_claim"]; got != "true" {
+		t.Fatalf("pending_create_claim = %q, want true", got)
+	}
+	for _, key := range []string{"quarantined_until", "sleep_reason"} {
+		if got := updated.Metadata[key]; got != "" {
+			t.Fatalf("%s = %q, want cleared", key, got)
+		}
+	}
+	if got := updated.Metadata["wake_attempts"]; got != "0" {
+		t.Fatalf("wake_attempts = %q, want 0", got)
+	}
+	if got := updated.Metadata["churn_count"]; got != "0" {
+		t.Fatalf("churn_count = %q, want 0", got)
+	}
+}

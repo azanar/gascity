@@ -24,6 +24,8 @@ const sessionBeadLabel = "gc:session"
 // sessionBeadType is the bead type for session beads.
 const sessionBeadType = "session"
 
+const staleSessionMissingSinceMetadata = "stale_session_missing_since"
+
 // loadSessionBeads returns all open session beads from the store.
 func loadSessionBeads(store beads.Store) ([]beads.Bead, error) {
 	if store == nil {
@@ -189,6 +191,7 @@ func reopenClosedConfiguredNamedSessionBead(
 			"close_reason":         "",
 			"closed_at":            "",
 			"pending_create_claim": pendingCreateClaim,
+			staleSessionMissingSinceMetadata: "",
 			"synced_at":            now.Format("2006-01-02T15:04:05Z07:00"),
 		}
 		for k, v := range extraMeta {
@@ -1221,6 +1224,17 @@ func reapStaleSessionBeads(
 	clk clock.Clock,
 	stderr io.Writer,
 ) int {
+	return reapStaleSessionBeadsWithMode(store, sp, dt, clk, stderr, false)
+}
+
+func reapStaleSessionBeadsWithMode(
+	store beads.Store,
+	sp runtime.Provider,
+	dt *drainTracker,
+	clk clock.Clock,
+	stderr io.Writer,
+	eager bool,
+) int {
 	if store == nil || sp == nil {
 		return 0
 	}
@@ -1248,11 +1262,38 @@ func reapStaleSessionBeads(
 		}
 		// Session is alive — nothing to reap.
 		if sp.IsRunning(sn) {
+			if strings.TrimSpace(b.Metadata[staleSessionMissingSinceMetadata]) != "" {
+				_ = store.SetMetadata(b.ID, staleSessionMissingSinceMetadata, "")
+			}
 			continue
 		}
 		// Startup grace: don't reap beads younger than the creating-state
 		// timeout. Zero CreatedAt means unknown age — skip conservatively.
 		if b.CreatedAt.IsZero() || now.Sub(b.CreatedAt) < staleCreatingStateTimeout {
+			continue
+		}
+		if configuredNamedSessionFreshPostCreateWindow(b, now) {
+			if staleSessionMissingSince(b.Metadata).IsZero() {
+				_ = store.SetMetadata(b.ID, staleSessionMissingSinceMetadata, now.UTC().Format(time.RFC3339))
+			}
+			continue
+		}
+		if repaired := repairStaleConfiguredNamedSessionBead(store, b, stderr); repaired {
+			continue
+		}
+		missingSince := staleSessionMissingSince(b.Metadata)
+		if missingSince.IsZero() {
+			if eager {
+				if closeBead(store, b.ID, "stale-session", now.UTC(), stderr) {
+					fmt.Fprintf(stderr, "WARN: reconciler: reaped stale session bead %s — tmux session %q not found\n", b.ID, sn) //nolint:errcheck
+					reaped++
+				}
+				continue
+			}
+			_ = store.SetMetadata(b.ID, staleSessionMissingSinceMetadata, now.UTC().Format(time.RFC3339))
+			continue
+		}
+		if now.Sub(missingSince) < staleCreatingStateTimeout {
 			continue
 		}
 		if closeBead(store, b.ID, "stale-session", now.UTC(), stderr) {
@@ -1261,6 +1302,53 @@ func reapStaleSessionBeads(
 		}
 	}
 	return reaped
+}
+
+func configuredNamedSessionFreshPostCreateWindow(b beads.Bead, now time.Time) bool {
+	if !isNamedSessionBead(b) {
+		return false
+	}
+	if strings.TrimSpace(b.Metadata["state_reason"]) != "creation_complete" {
+		return false
+	}
+	creationCompleteAt, ok := parseRFC3339Metadata(b.Metadata["creation_complete_at"])
+	if !ok {
+		return false
+	}
+	return now.Sub(creationCompleteAt) < staleCreatingStateTimeout
+}
+
+func repairStaleConfiguredNamedSessionBead(store beads.Store, b beads.Bead, stderr io.Writer) bool {
+	if store == nil || !isNamedSessionBead(b) {
+		return false
+	}
+	newSessionKey := ""
+	if newKey, err := session.GenerateSessionKey(); err == nil {
+		newSessionKey = newKey
+	}
+	batch := session.ConfigDriftResetPatch(session.StateCreating, newSessionKey)
+	if err := setMetaBatch(store, b.ID, batch, stderr); err != nil {
+		return false
+	}
+	if stderr != nil {
+		fmt.Fprintf(stderr, "WARN: reconciler: marked stale configured named session bead %s for in-place restart — tmux session %q not found\n", b.ID, strings.TrimSpace(b.Metadata["session_name"])) //nolint:errcheck
+	}
+	return true
+}
+
+func staleSessionMissingSince(meta map[string]string) time.Time {
+	if len(meta) == 0 {
+		return time.Time{}
+	}
+	raw := strings.TrimSpace(meta[staleSessionMissingSinceMetadata])
+	if raw == "" {
+		return time.Time{}
+	}
+	ts, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}
+	}
+	return ts
 }
 
 // closeBead sets final metadata on a session bead and closes it.
