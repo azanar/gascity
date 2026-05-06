@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sort"
 	"strings"
 
@@ -193,12 +194,45 @@ func managedLocalDoltHost(host string) bool {
 	}
 }
 
+func currentResolvableManagedDoltPort(cityPath string) string {
+	if port := currentManagedDoltPort(cityPath); port != "" {
+		return port
+	}
+	state, err := readDoltRuntimeStateFile(providerManagedDoltStatePath(cityPath))
+	if err != nil {
+		return ""
+	}
+	if !validDoltRuntimeState(state, cityPath) {
+		return ""
+	}
+	return strconv.Itoa(state.Port)
+}
+
 func resolvedRuntimeCityDoltTarget(cityPath string, allowRecovery bool) (contract.DoltConnectionTarget, bool, error) {
 	if target, ok, err := canonicalScopeDoltTarget(cityPath, cityPath); err != nil {
+		if allowRecovery {
+			if port := currentResolvableManagedDoltPort(cityPath); port != "" {
+				return contract.DoltConnectionTarget{Host: "127.0.0.1", Port: port}, true, nil
+			}
+		}
 		if !allowRecovery || !contract.IsManagedRuntimeUnavailable(err) {
 			return contract.DoltConnectionTarget{}, false, err
 		}
 	} else if ok {
+		if !target.External && strings.TrimSpace(target.Port) == "" {
+			if port := currentResolvableManagedDoltPort(cityPath); port != "" {
+				target.Port = port
+				return target, true, nil
+			}
+			if allowRecovery {
+				if err := healthBeadsProvider(cityPath); err == nil {
+					if port := currentResolvableManagedDoltPort(cityPath); port != "" {
+						target.Port = port
+						return target, true, nil
+					}
+				}
+			}
+		}
 		return target, true, nil
 	}
 	if host, port, ok, invalid := resolveConfiguredCityDoltTarget(cityPath); invalid {
@@ -216,12 +250,12 @@ func resolvedRuntimeCityDoltTarget(cityPath string, allowRecovery bool) (contrac
 		}, true, nil
 	}
 
-	if port := currentManagedDoltPort(cityPath); port != "" {
+	if port := currentResolvableManagedDoltPort(cityPath); port != "" {
 		return contract.DoltConnectionTarget{Host: "127.0.0.1", Port: port}, true, nil
 	}
 	if allowRecovery {
 		if err := healthBeadsProvider(cityPath); err == nil {
-			if port := currentManagedDoltPort(cityPath); port != "" {
+			if port := currentResolvableManagedDoltPort(cityPath); port != "" {
 				return contract.DoltConnectionTarget{Host: "127.0.0.1", Port: port}, true, nil
 			}
 		}
