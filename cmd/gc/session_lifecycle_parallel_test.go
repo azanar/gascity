@@ -819,6 +819,97 @@ func TestReconcileSessionBeads_DaemonMaxWakesPerTickOverride(t *testing.T) {
 	}
 }
 
+func TestExecutePlannedStarts_PinnedAndAlwaysSessionsBeatWakeBudget(t *testing.T) {
+	env := newReconcilerTestEnv()
+	override := 2
+	env.cfg = &config.City{
+		Daemon: config.DaemonConfig{MaxWakesPerTick: &override},
+		Agents: []config.Agent{
+			{Name: "mayor"},
+			{Name: "deacon"},
+			{Name: "worker-1"},
+			{Name: "worker-2"},
+		},
+	}
+	env.addDesired("mayor", "mayor", false)
+	env.addDesired("deacon", "deacon", false)
+	env.addDesired("worker-1", "worker-1", false)
+	env.addDesired("worker-2", "worker-2", false)
+
+	mayor := env.createSessionBead("mayor", "mayor")
+	env.markSessionCreating(&mayor)
+	mayor.Metadata["pin_awake"] = "true"
+	mayor.Metadata["configured_named_session"] = "true"
+	mayor.Metadata["configured_named_mode"] = "always"
+
+	deacon := env.createSessionBead("deacon", "deacon")
+	env.markSessionCreating(&deacon)
+	deacon.Metadata["configured_named_session"] = "true"
+	deacon.Metadata["configured_named_mode"] = "always"
+
+	worker1 := env.createSessionBead("worker-1", "worker-1")
+	env.markSessionCreating(&worker1)
+
+	worker2 := env.createSessionBead("worker-2", "worker-2")
+	env.markSessionCreating(&worker2)
+
+	woken := env.reconcile([]beads.Bead{worker1, mayor, worker2, deacon})
+	if woken != override {
+		t.Fatalf("woken = %d, want %d", woken, override)
+	}
+	if !env.sp.IsRunning("mayor") {
+		t.Fatalf("mayor should have started before generic workers")
+	}
+	if !env.sp.IsRunning("deacon") {
+		t.Fatalf("deacon should have started before generic workers")
+	}
+	if env.sp.IsRunning("worker-1") || env.sp.IsRunning("worker-2") {
+		t.Fatalf("generic workers should have been deferred once wake budget was consumed")
+	}
+}
+
+func TestExecutePlannedStarts_ExplicitCreatingSessionBeatsOrdinaryNamedWakeBudget(t *testing.T) {
+	env := newReconcilerTestEnv()
+	override := 1
+	env.cfg = &config.City{
+		Daemon: config.DaemonConfig{MaxWakesPerTick: &override},
+		Agents: []config.Agent{
+			{Name: "boot"},
+			{Name: "sazabi/refinery"},
+		},
+	}
+	env.addDesired("boot", "boot", false)
+	env.addDesired("sazabi--refinery", "sazabi/refinery", false)
+
+	boot := env.createSessionBead("boot", "boot")
+	env.markSessionCreating(&boot)
+	boot.Metadata["configured_named_session"] = "true"
+	boot.Metadata["configured_named_mode"] = "on_demand"
+
+	refinery := env.createSessionBead("sazabi--refinery", "sazabi/refinery")
+	env.markSessionCreating(&refinery)
+	refinery.Metadata["configured_named_session"] = "true"
+	refinery.Metadata["configured_named_mode"] = "on_demand"
+	if _, err := sessionpkg.WakeSession(env.store, refinery, env.clk.Now().UTC()); err != nil {
+		t.Fatalf("WakeSession(refinery): %v", err)
+	}
+	freshRefinery, err := env.store.Get(refinery.ID)
+	if err != nil {
+		t.Fatalf("Get(refinery): %v", err)
+	}
+
+	woken := env.reconcile([]beads.Bead{boot, freshRefinery})
+	if woken != override {
+		t.Fatalf("woken = %d, want %d", woken, override)
+	}
+	if !env.sp.IsRunning("sazabi--refinery") {
+		t.Fatalf("explicitly woken refinery should have started before ordinary named sessions")
+	}
+	if env.sp.IsRunning("boot") {
+		t.Fatalf("ordinary named session should have been deferred once wake budget was consumed")
+	}
+}
+
 func TestPrepareStartCandidate_NoneModeInitialMessageStaysInNudge(t *testing.T) {
 	store := beads.NewMemStore()
 	bead, err := store.Create(beads.Bead{
@@ -1156,6 +1247,96 @@ func TestCommitStartResult_AtomicBatchLandsStateAndClaimClearTogether(t *testing
 	}
 	if got.Metadata["pending_create_claim"] != "" {
 		t.Fatalf("pending_create_claim = %q, want cleared atomically with state transition", got.Metadata["pending_create_claim"])
+	}
+}
+
+func TestCommitStartResult_ClearsPendingCreateClaimEvenWhenCandidateCopyIsStale(t *testing.T) {
+	store := beads.NewMemStore()
+	bead, err := store.Create(beads.Bead{
+		Title:  "helper",
+		Type:   sessionBeadType,
+		Labels: []string{sessionBeadLabel},
+		Metadata: map[string]string{
+			"session_name":          "sky",
+			"session_name_explicit": "true",
+			"pending_create_claim":  "true",
+			"state":                 "creating",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	staleCopy := bead
+	staleCopy.Metadata = map[string]string{
+		"session_name":          "sky",
+		"session_name_explicit": "true",
+		"state":                 "creating",
+	}
+
+	result := startResult{
+		prepared: preparedStart{
+			candidate: startCandidate{
+				session: &staleCopy,
+				tp: TemplateParams{
+					SessionName:  "sky",
+					TemplateName: "helper",
+				},
+			},
+			coreHash: "core",
+			liveHash: "live",
+		},
+		outcome:  "success",
+		started:  time.Date(2026, 3, 18, 12, 0, 0, 0, time.UTC),
+		finished: time.Date(2026, 3, 18, 12, 0, 1, 0, time.UTC),
+	}
+
+	ok := commitStartResult(result, store, &clock.Fake{Time: time.Date(2026, 3, 18, 12, 0, 1, 0, time.UTC)}, events.Discard, 0, ioDiscard{}, ioDiscard{})
+	if !ok {
+		t.Fatal("commitStartResult returned false, want true for successful start")
+	}
+
+	got, err := store.Get(bead.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Metadata["pending_create_claim"] != "" {
+		t.Fatalf("pending_create_claim = %q, want cleared even when candidate session copy lacked the flag", got.Metadata["pending_create_claim"])
+	}
+}
+
+func TestRollbackPendingCreate_ReleasesNamedSessionIdentityBeforeClose(t *testing.T) {
+	store := beads.NewMemStore()
+	bead, err := store.Create(beads.Bead{
+		Title:  "mayor",
+		Type:   sessionBeadType,
+		Labels: []string{sessionBeadLabel},
+		Metadata: map[string]string{
+			"alias":                    "mayor",
+			"session_name":             "mayor",
+			"configured_named_session": "true",
+			"configured_named_identity": "mayor",
+			"pending_create_claim":     "true",
+			"state":                    "creating",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rollbackPendingCreate(&bead, store, time.Date(2026, 3, 18, 12, 0, 1, 0, time.UTC), ioDiscard{})
+
+	got, err := store.Get(bead.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "closed" {
+		t.Fatalf("status = %q, want closed", got.Status)
+	}
+	if got.Metadata["alias"] != "" {
+		t.Fatalf("alias = %q, want cleared", got.Metadata["alias"])
+	}
+	if got.Metadata["session_name"] != "" {
+		t.Fatalf("session_name = %q, want cleared", got.Metadata["session_name"])
 	}
 }
 
@@ -2133,6 +2314,25 @@ func (p *dieAfterStartProvider) IsRunning(name string) bool {
 	return p.Fake.IsRunning(name)
 }
 
+type errorThenDieProvider struct {
+	*runtime.Fake
+	stopAfter time.Duration
+}
+
+func (p *errorThenDieProvider) Start(ctx context.Context, name string, cfg runtime.Config) error {
+	if err := p.Fake.Start(ctx, name, cfg); err != nil {
+		return err
+	}
+	if token := cfg.Env["GC_INSTANCE_TOKEN"]; token != "" {
+		_ = p.SetMeta(name, "GC_INSTANCE_TOKEN", token)
+	}
+	go func() {
+		time.Sleep(p.stopAfter)
+		_ = p.Stop(name)
+	}()
+	return errors.New("simulated provider start error")
+}
+
 func TestExecutePreparedStartWave_StaleSessionKeyDetected(t *testing.T) {
 	sp := &dieAfterStartProvider{Fake: runtime.NewFake()}
 	item := preparedStart{
@@ -2176,9 +2376,64 @@ func TestExecutePreparedStartWave_StaleSessionKeyDetected(t *testing.T) {
 	}
 }
 
-func TestExecutePreparedStartWave_NoStaleCheckWithoutSessionKey(t *testing.T) {
-	// Session without a session_key should not trigger stale detection,
-	// even if the session dies after start.
+func TestExecutePreparedStartWave_DoesNotTreatErrorThenDeathAsConverged(t *testing.T) {
+	sp := &errorThenDieProvider{
+		Fake:      runtime.NewFake(),
+		stopAfter: 100 * time.Millisecond,
+	}
+	item := preparedStart{
+		candidate: startCandidate{
+			session: &beads.Bead{
+				ID: "gc-99",
+				Metadata: map[string]string{
+					"session_name":         "test-agent",
+					"template":             "worker",
+					"instance_token":       "test-token",
+					"pending_create_claim": "true",
+				},
+			},
+			tp: TemplateParams{
+				Command:      "claude",
+				SessionName:  "test-agent",
+				TemplateName: "worker",
+			},
+		},
+		cfg: runtime.Config{
+			Command: "claude",
+			Env: map[string]string{
+				"GC_INSTANCE_TOKEN": "test-token",
+			},
+		},
+	}
+
+	results := executePreparedStartWave(
+		context.Background(),
+		[]preparedStart{item},
+		sp,
+		nil,
+		nil,
+		10*time.Second,
+		1,
+	)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	r := results[0]
+	if r.err == nil {
+		t.Fatal("expected startup death after provider error, got nil")
+	}
+	if strings.Contains(r.outcome, "converged") {
+		t.Fatalf("outcome = %q, want non-converged failure", r.outcome)
+	}
+	if !strings.Contains(r.err.Error(), "died during startup") {
+		t.Fatalf("unexpected error: %v", r.err)
+	}
+}
+
+func TestExecutePreparedStartWave_DetectsStartupDeathWithoutSessionKey(t *testing.T) {
+	// Fresh-start sessions that die immediately after startup must be
+	// reported as failures instead of being misclassified as healthy.
 	sp := &dieAfterStartProvider{Fake: runtime.NewFake()}
 	item := preparedStart{
 		candidate: startCandidate{
@@ -2212,8 +2467,11 @@ func TestExecutePreparedStartWave_NoStaleCheckWithoutSessionKey(t *testing.T) {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
 	r := results[0]
-	if r.err != nil {
-		t.Fatalf("session without session_key should not get stale key error, got: %v", r.err)
+	if r.err == nil {
+		t.Fatal("expected error for fresh-start session that died during startup")
+	}
+	if !strings.Contains(r.err.Error(), "died during startup") {
+		t.Fatalf("unexpected error: %v", r.err)
 	}
 }
 
@@ -2509,8 +2767,10 @@ func TestConfirmPendingStart(t *testing.T) {
 	// drained) to active. Running states ("awake", "active") are left
 	// alone to avoid wasteful metadata rewrites on every reconcile
 	// cycle; terminal and transitional states ("draining", "archived",
-	// "quarantined", "suspended") are likewise ignored so we don't
-	// resurrect a session the reconciler deliberately wound down.
+	// "quarantined") are likewise ignored so we don't resurrect a
+	// session the reconciler deliberately wound down. "suspended" is
+	// different: configured named sessions can be deliberately kept in a
+	// suspended canonical bead and then re-woken in place after restart.
 	cases := []struct {
 		name  string
 		state string
@@ -2526,7 +2786,7 @@ func TestConfirmPendingStart(t *testing.T) {
 		{"draining", "draining", false},
 		{"archived", "archived", false},
 		{"quarantined", "quarantined", false},
-		{"suspended", "suspended", false},
+		{"suspended", "suspended", true},
 		{"unknown-future-state", "unknown-future-state", false},
 	}
 	for _, tc := range cases {
