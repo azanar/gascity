@@ -1250,96 +1250,6 @@ func TestCommitStartResult_AtomicBatchLandsStateAndClaimClearTogether(t *testing
 	}
 }
 
-func TestCommitStartResult_ClearsPendingCreateClaimEvenWhenCandidateCopyIsStale(t *testing.T) {
-	store := beads.NewMemStore()
-	bead, err := store.Create(beads.Bead{
-		Title:  "helper",
-		Type:   sessionBeadType,
-		Labels: []string{sessionBeadLabel},
-		Metadata: map[string]string{
-			"session_name":          "sky",
-			"session_name_explicit": "true",
-			"pending_create_claim":  "true",
-			"state":                 "creating",
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	staleCopy := bead
-	staleCopy.Metadata = map[string]string{
-		"session_name":          "sky",
-		"session_name_explicit": "true",
-		"state":                 "creating",
-	}
-
-	result := startResult{
-		prepared: preparedStart{
-			candidate: startCandidate{
-				session: &staleCopy,
-				tp: TemplateParams{
-					SessionName:  "sky",
-					TemplateName: "helper",
-				},
-			},
-			coreHash: "core",
-			liveHash: "live",
-		},
-		outcome:  "success",
-		started:  time.Date(2026, 3, 18, 12, 0, 0, 0, time.UTC),
-		finished: time.Date(2026, 3, 18, 12, 0, 1, 0, time.UTC),
-	}
-
-	ok := commitStartResult(result, store, &clock.Fake{Time: time.Date(2026, 3, 18, 12, 0, 1, 0, time.UTC)}, events.Discard, 0, ioDiscard{}, ioDiscard{})
-	if !ok {
-		t.Fatal("commitStartResult returned false, want true for successful start")
-	}
-
-	got, err := store.Get(bead.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Metadata["pending_create_claim"] != "" {
-		t.Fatalf("pending_create_claim = %q, want cleared even when candidate session copy lacked the flag", got.Metadata["pending_create_claim"])
-	}
-}
-
-func TestRollbackPendingCreate_ReleasesNamedSessionIdentityBeforeClose(t *testing.T) {
-	store := beads.NewMemStore()
-	bead, err := store.Create(beads.Bead{
-		Title:  "mayor",
-		Type:   sessionBeadType,
-		Labels: []string{sessionBeadLabel},
-		Metadata: map[string]string{
-			"alias":                    "mayor",
-			"session_name":             "mayor",
-			"configured_named_session": "true",
-			"configured_named_identity": "mayor",
-			"pending_create_claim":     "true",
-			"state":                    "creating",
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	rollbackPendingCreate(&bead, store, time.Date(2026, 3, 18, 12, 0, 1, 0, time.UTC), ioDiscard{})
-
-	got, err := store.Get(bead.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Status != "closed" {
-		t.Fatalf("status = %q, want closed", got.Status)
-	}
-	if got.Metadata["alias"] != "" {
-		t.Fatalf("alias = %q, want cleared", got.Metadata["alias"])
-	}
-	if got.Metadata["session_name"] != "" {
-		t.Fatalf("session_name = %q, want cleared", got.Metadata["session_name"])
-	}
-}
-
 func TestExecutePlannedStarts_UsesLogicalTemplateForDependencyRechecks(t *testing.T) {
 	sp := &dropDependencyAfterNStartsProvider{
 		Fake:      runtime.NewFake(),
@@ -2314,25 +2224,6 @@ func (p *dieAfterStartProvider) IsRunning(name string) bool {
 	return p.Fake.IsRunning(name)
 }
 
-type errorThenDieProvider struct {
-	*runtime.Fake
-	stopAfter time.Duration
-}
-
-func (p *errorThenDieProvider) Start(ctx context.Context, name string, cfg runtime.Config) error {
-	if err := p.Fake.Start(ctx, name, cfg); err != nil {
-		return err
-	}
-	if token := cfg.Env["GC_INSTANCE_TOKEN"]; token != "" {
-		_ = p.SetMeta(name, "GC_INSTANCE_TOKEN", token)
-	}
-	go func() {
-		time.Sleep(p.stopAfter)
-		_ = p.Stop(name)
-	}()
-	return errors.New("simulated provider start error")
-}
-
 func TestExecutePreparedStartWave_StaleSessionKeyDetected(t *testing.T) {
 	sp := &dieAfterStartProvider{Fake: runtime.NewFake()}
 	item := preparedStart{
@@ -2370,105 +2261,6 @@ func TestExecutePreparedStartWave_StaleSessionKeyDetected(t *testing.T) {
 	r := results[0]
 	if r.err == nil {
 		t.Fatal("expected error for session that died during startup with stale key")
-	}
-	if !strings.Contains(r.err.Error(), "died during startup") {
-		t.Fatalf("unexpected error: %v", r.err)
-	}
-}
-
-func TestExecutePreparedStartWave_DoesNotTreatErrorThenDeathAsConverged(t *testing.T) {
-	sp := &errorThenDieProvider{
-		Fake:      runtime.NewFake(),
-		stopAfter: 100 * time.Millisecond,
-	}
-	item := preparedStart{
-		candidate: startCandidate{
-			session: &beads.Bead{
-				ID: "gc-99",
-				Metadata: map[string]string{
-					"session_name":         "test-agent",
-					"template":             "worker",
-					"instance_token":       "test-token",
-					"pending_create_claim": "true",
-				},
-			},
-			tp: TemplateParams{
-				Command:      "claude",
-				SessionName:  "test-agent",
-				TemplateName: "worker",
-			},
-		},
-		cfg: runtime.Config{
-			Command: "claude",
-			Env: map[string]string{
-				"GC_INSTANCE_TOKEN": "test-token",
-			},
-		},
-	}
-
-	results := executePreparedStartWave(
-		context.Background(),
-		[]preparedStart{item},
-		sp,
-		nil,
-		nil,
-		10*time.Second,
-		1,
-	)
-
-	if len(results) != 1 {
-		t.Fatalf("expected 1 result, got %d", len(results))
-	}
-	r := results[0]
-	if r.err == nil {
-		t.Fatal("expected startup death after provider error, got nil")
-	}
-	if strings.Contains(r.outcome, "converged") {
-		t.Fatalf("outcome = %q, want non-converged failure", r.outcome)
-	}
-	if !strings.Contains(r.err.Error(), "died during startup") {
-		t.Fatalf("unexpected error: %v", r.err)
-	}
-}
-
-func TestExecutePreparedStartWave_DetectsStartupDeathWithoutSessionKey(t *testing.T) {
-	// Fresh-start sessions that die immediately after startup must be
-	// reported as failures instead of being misclassified as healthy.
-	sp := &dieAfterStartProvider{Fake: runtime.NewFake()}
-	item := preparedStart{
-		candidate: startCandidate{
-			session: &beads.Bead{
-				ID: "gc-99",
-				Metadata: map[string]string{
-					"session_name": "test-agent",
-					"template":     "worker",
-				},
-			},
-			tp: TemplateParams{
-				Command:      "claude",
-				SessionName:  "test-agent",
-				TemplateName: "worker",
-			},
-		},
-		cfg: runtime.Config{Command: "claude"},
-	}
-
-	results := executePreparedStartWave(
-		context.Background(),
-		[]preparedStart{item},
-		sp,
-		nil,
-		nil,
-		10*time.Second,
-		1,
-	)
-
-	if len(results) != 1 {
-		t.Fatalf("expected 1 result, got %d", len(results))
-	}
-	r := results[0]
-	if r.err == nil {
-		t.Fatal("expected error for fresh-start session that died during startup")
 	}
 	if !strings.Contains(r.err.Error(), "died during startup") {
 		t.Fatalf("unexpected error: %v", r.err)
@@ -2767,10 +2559,8 @@ func TestConfirmPendingStart(t *testing.T) {
 	// drained) to active. Running states ("awake", "active") are left
 	// alone to avoid wasteful metadata rewrites on every reconcile
 	// cycle; terminal and transitional states ("draining", "archived",
-	// "quarantined") are likewise ignored so we don't resurrect a
-	// session the reconciler deliberately wound down. "suspended" is
-	// different: configured named sessions can be deliberately kept in a
-	// suspended canonical bead and then re-woken in place after restart.
+	// "quarantined", "suspended") are likewise ignored so we don't
+	// resurrect a session the reconciler deliberately wound down.
 	cases := []struct {
 		name  string
 		state string
@@ -2786,7 +2576,7 @@ func TestConfirmPendingStart(t *testing.T) {
 		{"draining", "draining", false},
 		{"archived", "archived", false},
 		{"quarantined", "quarantined", false},
-		{"suspended", "suspended", true},
+		{"suspended", "suspended", false},
 		{"unknown-future-state", "unknown-future-state", false},
 	}
 	for _, tc := range cases {

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -525,14 +524,12 @@ func executePreparedStartWave(
 					err = nil
 				}
 			}
-			// Post-start survival check: a managed session that disappears
-			// immediately after startup is not actually healthy, even if the
-			// tmux provider briefly observed the session during its initial
-			// readiness check. Session-keyed sessions use this to detect stale
-			// resume keys; fresh-start sessions use the same window to reject
-			// post-start hook/nudge exits that would otherwise be misclassified
-			// as successful starts.
-			if err == nil && item.candidate.session != nil {
+			// Stale session key detection: if the session was started
+			// with a resume flag but dies immediately, the session key
+			// likely references a conversation that no longer exists
+			// (e.g., "No conversation found"). Report as a failure so
+			// recordWakeFailure clears the key for the next attempt.
+			if err == nil && item.candidate.session != nil && item.candidate.session.Metadata["session_key"] != "" {
 				time.Sleep(staleKeyDetectDelay)
 				running := false
 				if store == nil || strings.TrimSpace(item.candidate.session.ID) == "" {
@@ -546,21 +543,16 @@ func executePreparedStartWave(
 			}
 			finished := time.Now()
 			rollbackPending := err != nil && shouldRollbackPendingCreate(item.candidate.session)
-			if err != nil && rollbackPending {
-				if pendingCreateConvergedAfterStartup(item.candidate.session, item.candidate.name(), cityPath, store, sp, cfg) {
-					results[i] = startResult{
-						prepared:        item,
-						err:             nil,
-						outcome:         "start_error_converged",
-						started:         started,
-						finished:        finished,
-						rollbackPending: false,
-					}
-					return
+			if err != nil && rollbackPending && runningSessionMatchesPendingCreate(item.candidate.session, item.candidate.name(), sp) {
+				results[i] = startResult{
+					prepared:        item,
+					err:             nil,
+					outcome:         "start_error_converged",
+					started:         started,
+					finished:        finished,
+					rollbackPending: false,
 				}
-				if runningSessionMatchesPendingCreate(item.candidate.session, item.candidate.name(), sp) {
-					err = fmt.Errorf("session %q died during startup", item.candidate.name())
-				}
+				return
 			}
 			var outcome string
 			switch {
@@ -578,7 +570,7 @@ func executePreparedStartWave(
 				switch {
 				case runningErr != nil || !running:
 					outcome = "provider_error"
-				case rollbackPending && pendingCreateConvergedAfterStartup(item.candidate.session, item.candidate.name(), cityPath, store, sp, cfg):
+				case rollbackPending && runningSessionMatchesPendingCreate(item.candidate.session, item.candidate.name(), sp):
 					outcome = "session_exists_converged"
 					err = nil
 					rollbackPending = false
@@ -602,48 +594,6 @@ func executePreparedStartWave(
 		<-done
 	}
 	return results
-}
-
-func pendingCreateConvergedAfterStartup(
-	session *beads.Bead,
-	sessionName string,
-	cityPath string,
-	store beads.Store,
-	sp runtime.Provider,
-	cfg *config.City,
-) bool {
-	initialMatch := runningSessionMatchesPendingCreate(session, sessionName, sp)
-	if !initialMatch {
-		if os.Getenv("GC_TMUX_TRACE") == "1" {
-			log.Printf("[WAKE-TRACE] pendingCreateConvergedAfterStartup session=%s match_before_wait=false", sessionName)
-		}
-		return false
-	}
-	time.Sleep(staleKeyDetectDelay)
-	running := false
-	if store == nil || session == nil || strings.TrimSpace(session.ID) == "" {
-		running = sp != nil && sp.IsRunning(sessionName)
-		if !running {
-			if os.Getenv("GC_TMUX_TRACE") == "1" {
-				log.Printf("[WAKE-TRACE] pendingCreateConvergedAfterStartup session=%s running_after_wait=false store_bound=false", sessionName)
-			}
-			return false
-		}
-	} else {
-		var err error
-		running, err = workerSessionTargetRunningWithConfig(cityPath, store, sp, cfg, sessionName)
-		if err != nil || !running {
-			if os.Getenv("GC_TMUX_TRACE") == "1" {
-				log.Printf("[WAKE-TRACE] pendingCreateConvergedAfterStartup session=%s running_after_wait=%v err=%v store_bound=true", sessionName, running, err)
-			}
-			return false
-		}
-	}
-	finalMatch := runningSessionMatchesPendingCreate(session, sessionName, sp)
-	if os.Getenv("GC_TMUX_TRACE") == "1" {
-		log.Printf("[WAKE-TRACE] pendingCreateConvergedAfterStartup session=%s running_after_wait=%v match_after_wait=%v session_id=%s instance_token=%s", sessionName, running, finalMatch, strings.TrimSpace(session.Metadata["session_key"]), strings.TrimSpace(session.Metadata["instance_token"]))
-	}
-	return finalMatch
 }
 
 func startPreparedStartCandidate(
@@ -690,14 +640,14 @@ func commitStartResult(
 
 // confirmPendingStart reports whether a session in the given metadata
 // state should be transitioned to "active" after a successful runtime
-// spawn. Empty, "creating", "asleep", "drained", and "suspended" all
-// indicate the session was pending a spawn; "awake" is treated by the
-// reconciler as equivalent to "active" and is intentionally NOT restamped
-// (a no-op metadata write on every spawn). Any other state ("draining",
+// spawn. Empty, "creating", "asleep", and "drained" all indicate the
+// session was pending a spawn; "awake" is treated by the reconciler as
+// equivalent to "active" and is intentionally NOT restamped (a no-op
+// metadata write on every spawn). Any other state ("draining",
 // "archived", "quarantined", ...) is left alone.
 func confirmPendingStart(currentState string) bool {
 	switch sessionpkg.State(strings.TrimSpace(currentState)) {
-	case "", sessionpkg.StateCreating, sessionpkg.StateAsleep, sessionpkg.State("drained"), sessionpkg.StateSuspended:
+	case "", sessionpkg.StateCreating, sessionpkg.StateAsleep, sessionpkg.State("drained"):
 		return true
 	}
 	return false
@@ -771,7 +721,7 @@ func commitStartResultTraced(
 		CoreBreakdown:           coreBreakdown,
 		ConfirmState:            confirmPendingStart(session.Metadata["state"]),
 		ClearSleepReason:        session.Metadata["sleep_reason"] != "",
-		ClearPendingCreateClaim: true,
+		ClearPendingCreateClaim: shouldRollbackPendingCreate(session),
 		Now:                     clk.Now(),
 	})
 	if err := store.SetMetadataBatch(session.ID, metadata); err != nil {
@@ -885,52 +835,23 @@ func runningSessionMatchesPendingCreate(session *beads.Bead, sessionName string,
 	if liveID, err := sp.GetMeta(sessionName, "GC_SESSION_ID"); err == nil {
 		liveID = strings.TrimSpace(liveID)
 		if liveID != "" {
-			match := liveID == session.ID
-			if os.Getenv("GC_TMUX_TRACE") == "1" {
-				log.Printf("[WAKE-TRACE] runningSessionMatchesPendingCreate session=%s source=session_id live=%s want=%s match=%v", sessionName, liveID, session.ID, match)
-			}
-			return match
+			return liveID == session.ID
 		}
 	}
 	expectedToken := strings.TrimSpace(session.Metadata["instance_token"])
 	if expectedToken == "" {
-		if os.Getenv("GC_TMUX_TRACE") == "1" {
-			log.Printf("[WAKE-TRACE] runningSessionMatchesPendingCreate session=%s source=instance_token missing_expected", sessionName)
-		}
 		return false
 	}
 	liveToken, err := sp.GetMeta(sessionName, "GC_INSTANCE_TOKEN")
 	if err != nil {
-		if os.Getenv("GC_TMUX_TRACE") == "1" {
-			log.Printf("[WAKE-TRACE] runningSessionMatchesPendingCreate session=%s source=instance_token err=%v", sessionName, err)
-		}
 		return false
 	}
-	match := strings.TrimSpace(liveToken) == expectedToken
-	if os.Getenv("GC_TMUX_TRACE") == "1" {
-		log.Printf("[WAKE-TRACE] runningSessionMatchesPendingCreate session=%s source=instance_token live=%s want=%s match=%v", sessionName, strings.TrimSpace(liveToken), expectedToken, match)
-	}
-	return match
+	return strings.TrimSpace(liveToken) == expectedToken
 }
 
 func rollbackPendingCreate(session *beads.Bead, store beads.Store, now time.Time, stderr io.Writer) {
 	if session == nil || store == nil {
 		return
-	}
-	if isNamedSessionBead(*session) {
-		batch := map[string]string{
-			"alias":                 "",
-			"session_name":          "",
-			"session_name_explicit": "",
-		}
-		if err := store.SetMetadataBatch(session.ID, batch); err == nil {
-			if session.Metadata == nil {
-				session.Metadata = make(map[string]string, len(batch))
-			}
-			for key, value := range batch {
-				session.Metadata[key] = value
-			}
-		}
 	}
 	if strings.TrimSpace(session.Metadata["session_name_explicit"]) == "true" {
 		if setMeta(store, session.ID, "session_name", "", stderr) == nil {
