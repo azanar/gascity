@@ -1816,6 +1816,14 @@ func TestNewSessionWithCommandAndEnv(t *testing.T) {
 	if remainOnExit != "on" {
 		t.Errorf("remain-on-exit = %q, want %q", remainOnExit, "on")
 	}
+
+	exitEmpty, err := tm.run("show-options", "-g", "-v", "exit-empty")
+	if err != nil {
+		t.Fatalf("show-options exit-empty: %v", err)
+	}
+	if exitEmpty != "off" {
+		t.Errorf("exit-empty = %q, want %q", exitEmpty, "off")
+	}
 }
 
 func TestSetGetRemoveEnvironment(t *testing.T) {
@@ -1894,6 +1902,14 @@ func TestNewSessionWithCommandAndEnvEmpty(t *testing.T) {
 	}
 	if remainOnExit != "on" {
 		t.Errorf("remain-on-exit = %q, want %q", remainOnExit, "on")
+	}
+
+	exitEmpty, err := tm.run("show-options", "-g", "-v", "exit-empty")
+	if err != nil {
+		t.Fatalf("show-options exit-empty: %v", err)
+	}
+	if exitEmpty != "off" {
+		t.Errorf("exit-empty = %q, want %q", exitEmpty, "off")
 	}
 }
 

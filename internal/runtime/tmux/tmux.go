@@ -364,6 +364,10 @@ func (t *Tmux) NewSessionWithCommandAndEnv(name, workDir, command string, env ma
 }
 
 func (t *Tmux) postCreateSessionOptions(name string) {
+	// Keep the tmux server alive even if it temporarily believes there are
+	// no sessions. This narrows the blast radius of batch session churn from
+	// "entire server disappears" to "sessions can be recreated in-place".
+	t.run("set-option", "-g", "exit-empty", "off") //nolint:errcheck // best-effort
 	// tmux 3.3+ sets window-size=manual on detached sessions, locking them
 	// at 80x24 even after a client attaches. Reset to "latest" so the window
 	// adapts to the largest attached client.
