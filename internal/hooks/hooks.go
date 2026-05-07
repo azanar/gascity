@@ -150,8 +150,17 @@ func installOverlayManaged(fs fsys.FS, workDir, provider string) error {
 			return fmt.Errorf("reading %s: %w", name, err)
 		}
 		dst := filepath.Join(workDir, filepath.FromSlash(rel))
-		return writeEmbeddedManaged(fs, dst, data, nil)
+		return writeEmbeddedManaged(fs, dst, data, overlayManagedNeedsUpgrade(provider, rel))
 	})
+}
+
+func overlayManagedNeedsUpgrade(provider, rel string) func([]byte) bool {
+	switch {
+	case provider == "codex" && filepath.ToSlash(rel) == ".codex/hooks.json":
+		return codexHookFileNeedsUpgrade
+	default:
+		return nil
+	}
 }
 
 // installClaude writes the runtime settings file (.gc/settings.json) in the
@@ -386,4 +395,12 @@ func claudeFileNeedsUpgrade(existing []byte) bool {
 
 	_, ok := known[string(existing)]
 	return ok
+}
+
+func codexHookFileNeedsUpgrade(existing []byte) bool {
+	content := string(existing)
+	return strings.Contains(content, `gc prime --hook`) &&
+		(!strings.Contains(content, `GC_MANAGED_SESSION_HOOK=1`) ||
+			!strings.Contains(content, `GC_HOOK_EVENT_NAME=SessionStart`) ||
+			!strings.Contains(content, `gc prime --hook --hook-format codex`))
 }

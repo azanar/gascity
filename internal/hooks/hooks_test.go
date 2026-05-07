@@ -686,6 +686,56 @@ func TestInstallOverlayManagedProviders(t *testing.T) {
 	}
 }
 
+func TestInstallCodexWritesManagedSessionStartHook(t *testing.T) {
+	fs := fsys.NewFake()
+	if err := Install(fs, "/city", "/work", []string{"codex"}); err != nil {
+		t.Fatalf("Install(codex): %v", err)
+	}
+	got := string(fs.Files["/work/.codex/hooks.json"])
+	if !strings.Contains(got, "GC_MANAGED_SESSION_HOOK=1") {
+		t.Fatalf("codex hooks missing managed session marker:\n%s", got)
+	}
+	if !strings.Contains(got, "GC_HOOK_EVENT_NAME=SessionStart") {
+		t.Fatalf("codex hooks missing SessionStart event marker:\n%s", got)
+	}
+	if !strings.Contains(got, "gc prime --hook --hook-format codex") {
+		t.Fatalf("codex hooks missing codex hook-format command:\n%s", got)
+	}
+}
+
+func TestInstallCodexUpgradesStaleGeneratedHookFile(t *testing.T) {
+	fs := fsys.NewFake()
+	fs.Files["/work/.codex/hooks.json"] = []byte(`{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && gc prime --hook"
+          }
+        ]
+      }
+    ]
+  }
+}`)
+
+	if err := Install(fs, "/city", "/work", []string{"codex"}); err != nil {
+		t.Fatalf("Install(codex stale hook): %v", err)
+	}
+	got := string(fs.Files["/work/.codex/hooks.json"])
+	if !strings.Contains(got, "GC_MANAGED_SESSION_HOOK=1") {
+		t.Fatalf("stale codex hook not upgraded with managed marker:\n%s", got)
+	}
+	if !strings.Contains(got, "GC_HOOK_EVENT_NAME=SessionStart") {
+		t.Fatalf("stale codex hook not upgraded with SessionStart marker:\n%s", got)
+	}
+	if !strings.Contains(got, "gc prime --hook --hook-format codex") {
+		t.Fatalf("stale codex hook not upgraded to codex hook-format:\n%s", got)
+	}
+}
+
 func TestInstallMultipleProviders(t *testing.T) {
 	fs := fsys.NewFake()
 	// Claude writes city-level files; overlay-managed names write their
