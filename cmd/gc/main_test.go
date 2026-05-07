@@ -4922,6 +4922,73 @@ prompt_template = "prompts/probe.md"
 	}
 }
 
+func TestDoPrimeHookPrefersProviderSessionIDFromStdinOverGCSessionID(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".gc"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	promptsDir := filepath.Join(dir, "prompts")
+	if err := os.MkdirAll(promptsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(promptsDir, "mayor.md"), []byte("mayor prompt\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	toml := `[workspace]
+name = "test-city"
+provider = "codex"
+
+[[agent]]
+name = "mayor"
+prompt_template = "prompts/mayor.md"
+`
+	if err := os.WriteFile(filepath.Join(dir, "city.toml"), []byte(toml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	orig, _ := os.Getwd()
+	t.Cleanup(func() { _ = os.Chdir(orig) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GC_AGENT", "mayor")
+	t.Setenv("GC_SESSION_ID", "ga-not-a-provider-session")
+
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldPrimeStdin := primeStdin
+	primeStdin = func() *os.File { return reader }
+	t.Cleanup(func() {
+		primeStdin = oldPrimeStdin
+		_ = reader.Close()
+	})
+	if err := json.NewEncoder(writer).Encode(map[string]string{
+		"session_id": "provider-session-456",
+		"source":     "startup",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := doPrimeWithMode(nil, &stdout, &stderr, true, false)
+	if code != 0 {
+		t.Fatalf("doPrimeWithMode = %d, want 0; stderr: %s", code, stderr.String())
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, ".runtime", "session_id"))
+	if err != nil {
+		t.Fatalf("reading persisted session ID: %v", err)
+	}
+	if got := strings.TrimSpace(string(data)); got != "provider-session-456" {
+		t.Fatalf("persisted session ID = %q, want provider session id", got)
+	}
+}
+
 func TestDoPrimeHookFallsBackToGCTemplateForManualSessionAlias(t *testing.T) {
 	t.Setenv("GC_BEADS", "file")
 	dir := t.TempDir()

@@ -425,26 +425,24 @@ func readPrimeHookContext() primeHookContext {
 		Source:        strings.TrimSpace(os.Getenv("GC_HOOK_SOURCE")),
 		HookEventName: strings.TrimSpace(os.Getenv("GC_HOOK_EVENT_NAME")),
 	}
-	if shouldReadPrimeHookStdin() {
-		if input := readPrimeHookStdin(); input != nil {
-			if source := strings.TrimSpace(input.Source); source != "" {
-				ctx.Source = source
-			}
-			ctx.SessionID = strings.TrimSpace(input.SessionID)
+	if input := readPrimeHookStdin(); input != nil {
+		if source := strings.TrimSpace(input.Source); source != "" {
+			ctx.Source = source
 		}
+		ctx.SessionID = strings.TrimSpace(input.SessionID)
 	}
-	if id := strings.TrimSpace(os.Getenv("GC_SESSION_ID")); id != "" {
+	if id := strings.TrimSpace(os.Getenv("CLAUDE_SESSION_ID")); id != "" {
 		ctx.SessionID = id
-	} else if id := strings.TrimSpace(os.Getenv("CLAUDE_SESSION_ID")); id != "" {
-		ctx.SessionID = id
+	} else if ctx.SessionID == "" {
+		if id := strings.TrimSpace(os.Getenv("GC_SESSION_ID")); id != "" {
+			ctx.SessionID = id
+		}
 	}
 	return ctx
 }
 
 func shouldReadPrimeHookStdin() bool {
-	hasEnvSessionID := strings.TrimSpace(os.Getenv("GC_SESSION_ID")) != "" ||
-		strings.TrimSpace(os.Getenv("CLAUDE_SESSION_ID")) != ""
-	return !hasEnvSessionID
+	return true
 }
 
 func readPrimeHookStdin() *primeHookInput {
