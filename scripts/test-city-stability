@@ -1,0 +1,17 @@
+#!/bin/bash
+
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+cd "$ROOT"
+
+echo "==> cmd/gc named-session and status stability"
+go test ./cmd/gc -count=1 -run 'Test(BuildDesiredState_OnDemandNamedSession_.*|CollectCityStatusSnapshotUsesProviderRunningSet|CityStatusNamedSessionsUseRuntimeLiveness|ReapStaleSessionBeads_.*|ExecutePlannedStarts_.*)'
+
+echo
+echo "==> tmux runtime stability"
+go test ./internal/runtime/tmux -count=1 -run 'Test(StateCache_.*|NewSessionWithCommandAndEnv|NewSessionWithCommandAndEnvEmpty)'
+
+echo
+echo "==> beads subprocess and dep-batch stability"
+go test ./internal/beads -count=1 -run 'Test(ExecCommandRunnerTimeoutKillsProcessGroup|BdStoreDepListBatchSkipsMissingIDs)'

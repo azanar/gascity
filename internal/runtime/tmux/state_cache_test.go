@@ -268,6 +268,35 @@ func TestStateCache_NoServerPreservesLastKnownGoodUntilStaleTTL(t *testing.T) {
 	}
 }
 
+func TestStateCache_NoServerRecoveryRefreshesToNewSessionSet(t *testing.T) {
+	f := &mockFetcher{
+		sessions: map[string]bool{"mayor": true},
+	}
+	cache := NewStateCache(f, 50*time.Millisecond)
+	cache.staleTTL = 200 * time.Millisecond
+
+	if !cache.IsRunning("mayor") {
+		t.Fatal("expected mayor running initially")
+	}
+
+	f.setResult(nil, ErrNoServer)
+	cache.Invalidate()
+
+	if !cache.IsRunning("mayor") {
+		t.Fatal("expected mayor to remain running during transient no-server failure")
+	}
+
+	f.setResult(map[string]bool{"deacon": true}, nil)
+	cache.Invalidate()
+
+	if cache.IsRunning("mayor") {
+		t.Fatal("expected mayor to disappear after a successful recovery refresh")
+	}
+	if !cache.IsRunning("deacon") {
+		t.Fatal("expected deacon to appear after a successful recovery refresh")
+	}
+}
+
 func TestStateCache_ConcurrentInvalidateAndRead(_ *testing.T) {
 	var fetchCount atomic.Int64
 	f := &mockFetcher{

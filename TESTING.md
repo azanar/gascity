@@ -44,6 +44,14 @@ fast unit-only baseline; the integration contribution comes from the
 shard-specific `coverage.integration-*.txt` profiles and their matching
 Codecov flags.
 
+For local city regressions, use `make test-city-stability`. It runs the
+deterministic slices that guard the failure modes we have repeatedly hit in
+live towns:
+
+- named-session convergence and wake-budget regressions in `cmd/gc`
+- tmux cache and session-creation behavior in `internal/runtime/tmux`
+- `bd` timeout / stale-ID subprocess resilience in `internal/beads`
+
 ### 2. Testscript (`.txtar` files in `cmd/gc/testdata/`)
 
 Test what the USER sees. Run the real `gc` binary, assert on stdout/stderr.
