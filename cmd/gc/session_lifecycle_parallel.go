@@ -73,6 +73,21 @@ func (c startCandidate) wakePriority() int {
 	return 4
 }
 
+func (c startCandidate) wakeBudgetProtected() bool {
+	if c.session == nil {
+		return false
+	}
+	meta := c.session.Metadata
+	if strings.TrimSpace(meta["configured_named_session"]) != "true" {
+		return false
+	}
+	if strings.TrimSpace(meta["pending_create_claim"]) == "true" {
+		return true
+	}
+	return strings.TrimSpace(meta["continuation_reset_pending"]) == "true" &&
+		strings.TrimSpace(meta["started_config_hash"]) == ""
+}
+
 func sortStartCandidatesForWakeBudget(candidates []startCandidate) {
 	sort.SliceStable(candidates, func(i, j int) bool {
 		pi := candidates[i].wakePriority()
@@ -1014,14 +1029,24 @@ func executePlannedStartsTraced(
 			}
 			ready = append(ready, candidate)
 		}
+		waveMaxWakes := maxWakes
+		protectedReady := 0
+		for _, candidate := range ready {
+			if candidate.wakeBudgetProtected() {
+				protectedReady++
+			}
+		}
+		if floor := wakeCount + protectedReady; floor > waveMaxWakes {
+			waveMaxWakes = floor
+		}
 		for offset := 0; offset < len(ready); {
-			if wakeCount >= maxWakes {
+			if wakeCount >= waveMaxWakes {
 				for _, candidate := range ready[offset:] {
 					logLifecycleOutcome(stderr, "start", wave, candidate.name(), candidate.logicalTemplate(cfg), "deferred_by_wake_budget", time.Time{}, time.Time{}, nil)
 				}
 				break
 			}
-			batchSize := min(defaultMaxParallelStartsPerWave, maxWakes-wakeCount)
+			batchSize := min(defaultMaxParallelStartsPerWave, waveMaxWakes-wakeCount)
 			end := min(offset+batchSize, len(ready))
 			var prepared []preparedStart
 			for _, candidate := range ready[offset:end] {

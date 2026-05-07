@@ -3081,6 +3081,52 @@ func TestReconcileSessionBeads_BeadMetadataRestartRequestedWhenSessionDead(t *te
 	}
 }
 
+func TestResetConfiguredNamedSessionForConfigDrift_ResumeOnlyProviderClearsStaleKey(t *testing.T) {
+	store := beads.NewMemStore()
+	session, err := store.Create(beads.Bead{
+		Title:  "mayor",
+		Type:   sessionBeadType,
+		Status: "open",
+		Labels: []string{sessionBeadLabel},
+		Metadata: map[string]string{
+			"session_name":              "mayor",
+			"alias":                     "mayor",
+			"state":                     "active",
+			"template":                  "mayor",
+			"configured_named_session":  "true",
+			"configured_named_identity": "mayor",
+			"configured_named_mode":     "always",
+			"session_key":               "stale-session-key",
+			"resume_flag":               "resume",
+			"resume_style":              "subcommand",
+			"resume_command":            "codex resume {{.SessionKey}}",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	var stderr bytes.Buffer
+
+	resetConfiguredNamedSessionForConfigDrift(&session, store, runtime.NewFake(), "mayor", false, "creating", &stderr)
+
+	got, err := store.Get(session.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Metadata["state"] != "creating" {
+		t.Fatalf("state = %q, want creating", got.Metadata["state"])
+	}
+	if got.Metadata["pending_create_claim"] != "true" {
+		t.Fatalf("pending_create_claim = %q, want true", got.Metadata["pending_create_claim"])
+	}
+	if got.Metadata["session_key"] != "" {
+		t.Fatalf("session_key = %q, want cleared for resume-only provider", got.Metadata["session_key"])
+	}
+	if got.Metadata["continuation_reset_pending"] != "true" {
+		t.Fatalf("continuation_reset_pending = %q, want true", got.Metadata["continuation_reset_pending"])
+	}
+}
+
 // TestReconcileSessionBeads_ClosedOnDemandBeadReopensWhenInDesiredState
 // verifies the full reconciler-level cycle for on_demand named session
 // recovery: a closed session bead that is still in the desired state

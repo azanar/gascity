@@ -910,6 +910,134 @@ func TestExecutePlannedStarts_ExplicitCreatingSessionBeatsOrdinaryNamedWakeBudge
 	}
 }
 
+func TestExecutePlannedStarts_PendingCreateNamedSessionsBypassWakeBudget(t *testing.T) {
+	env := newReconcilerTestEnv()
+	override := 5
+	env.cfg = &config.City{
+		Daemon: config.DaemonConfig{MaxWakesPerTick: &override},
+		Agents: []config.Agent{
+			{Name: "mayor"},
+			{Name: "deacon"},
+			{Name: "boot"},
+			{Name: "beads/witness"},
+			{Name: "dotfiles/witness"},
+			{Name: "sazabi/witness"},
+			{Name: "sazabi/refinery"},
+		},
+	}
+	names := []string{
+		"mayor",
+		"deacon",
+		"boot",
+		"beads--witness",
+		"dotfiles--witness",
+		"sazabi--witness",
+		"sazabi--refinery",
+	}
+	templates := []string{
+		"mayor",
+		"deacon",
+		"boot",
+		"beads/witness",
+		"dotfiles/witness",
+		"sazabi/witness",
+		"sazabi/refinery",
+	}
+	var seeded []beads.Bead
+	for i, name := range names {
+		env.addDesired(name, templates[i], false)
+		b := env.createSessionBead(name, templates[i])
+		env.markSessionCreating(&b)
+		b.Metadata["configured_named_session"] = "true"
+		b.Metadata["configured_named_mode"] = "on_demand"
+		b.Metadata["pending_create_claim"] = "true"
+		seeded = append(seeded, b)
+	}
+
+	woken := env.reconcile(seeded)
+	if woken != len(names) {
+		t.Fatalf("woken = %d, want all %d configured named sessions", woken, len(names))
+	}
+	for _, name := range names {
+		if !env.sp.IsRunning(name) {
+			t.Fatalf("%s should have started even though wake budget was only %d", name, override)
+		}
+	}
+}
+
+func TestExecutePlannedStarts_ResetPendingNamedSessionsBypassWakeBudget(t *testing.T) {
+	env := newReconcilerTestEnv()
+	override := 5
+	env.cfg = &config.City{
+		Daemon: config.DaemonConfig{MaxWakesPerTick: &override},
+		Agents: []config.Agent{
+			{Name: "mayor"},
+			{Name: "deacon"},
+			{Name: "boot"},
+			{Name: "beads/witness"},
+			{Name: "dotfiles/witness"},
+			{Name: "sazabi/witness"},
+			{Name: "sazabi/refinery"},
+		},
+	}
+	names := []string{
+		"mayor",
+		"deacon",
+		"boot",
+		"beads--witness",
+		"dotfiles--witness",
+		"sazabi--witness",
+		"sazabi--refinery",
+	}
+	templates := []string{
+		"mayor",
+		"deacon",
+		"boot",
+		"beads/witness",
+		"dotfiles/witness",
+		"sazabi/witness",
+		"sazabi/refinery",
+	}
+	var candidates []startCandidate
+	for i, name := range names {
+		env.addDesired(name, templates[i], false)
+		b := env.createSessionBead(name, templates[i])
+		b.Metadata["configured_named_session"] = "true"
+		b.Metadata["configured_named_mode"] = "on_demand"
+		b.Metadata["continuation_reset_pending"] = "true"
+		b.Metadata["started_config_hash"] = ""
+		b.Metadata["pending_create_claim"] = ""
+		candidates = append(candidates, startCandidate{
+			session: &b,
+			tp:      env.desiredState[name],
+			order:   i,
+		})
+	}
+
+	woken := executePlannedStarts(
+		context.Background(),
+		candidates,
+		env.cfg,
+		env.desiredState,
+		env.sp,
+		env.store,
+		"",
+		env.clk,
+		env.rec,
+		5*time.Second,
+		&env.stdout,
+		&env.stderr,
+	)
+	if woken != len(names) {
+		t.Fatalf("woken = %d, want all %d configured named reset candidates", woken, len(names))
+	}
+	for _, name := range names {
+		if !env.sp.IsRunning(name) {
+			t.Fatalf("%s should have started even though wake budget was only %d", name, override)
+		}
+	}
+}
+
 func TestPrepareStartCandidate_NoneModeInitialMessageStaysInNudge(t *testing.T) {
 	store := beads.NewMemStore()
 	bead, err := store.Create(beads.Bead{

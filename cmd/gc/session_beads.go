@@ -26,6 +26,10 @@ const sessionBeadType = "session"
 
 const staleSessionMissingSinceMetadata = "stale_session_missing_since"
 
+type runtimeSessionNamesProvider interface {
+	SessionNames() []string
+}
+
 // loadSessionBeads returns all open session beads from the store.
 func loadSessionBeads(store beads.Store) ([]beads.Bead, error) {
 	if store == nil {
@@ -1238,14 +1242,34 @@ func reapStaleSessionBeadsWithMode(
 		return 0
 	}
 	now := clk.Now()
+	runtimeEmpty := false
+	if lister, ok := sp.(runtimeSessionNamesProvider); ok {
+		runtimeEmpty = len(lister.SessionNames()) == 0
+	}
 	reaped := 0
 	for _, b := range open {
 		sn := b.Metadata["session_name"]
 		if sn == "" {
 			continue
 		}
-		// Don't reap beads whose tmux session hasn't been started yet.
-		if b.Metadata["state"] == "creating" || strings.TrimSpace(b.Metadata["pending_create_claim"]) == "true" {
+		creatingOrPending := b.Metadata["state"] == "creating" || strings.TrimSpace(b.Metadata["pending_create_claim"]) == "true"
+		if creatingOrPending {
+			// Fresh pending-create leases are allowed to survive while startup
+			// converges. Old dead pool-managed leases are not: after the grace
+			// window they become fossil beads that block alias reuse forever.
+			if sp.IsRunning(sn) {
+				continue
+			}
+			if b.CreatedAt.IsZero() || now.Sub(b.CreatedAt) < staleCreatingStateTimeout {
+				continue
+			}
+			if strings.TrimSpace(b.Metadata["pool_managed"]) != "true" {
+				continue
+			}
+			if closeBead(store, b.ID, "stale-session", now.UTC(), stderr) {
+				fmt.Fprintf(stderr, "WARN: reconciler: reaped stale session bead %s — tmux session %q not found\n", b.ID, sn) //nolint:errcheck
+				reaped++
+			}
 			continue
 		}
 		// Don't reap beads with an active drain — the drainTracker is
@@ -1266,17 +1290,21 @@ func reapStaleSessionBeadsWithMode(
 		if b.CreatedAt.IsZero() || now.Sub(b.CreatedAt) < staleCreatingStateTimeout {
 			continue
 		}
-		if configuredNamedSessionFreshPostCreateWindow(b, now) {
-			if staleSessionMissingSince(b.Metadata).IsZero() {
-				_ = store.SetMetadata(b.ID, staleSessionMissingSinceMetadata, now.UTC().Format(time.RFC3339))
-			}
-			continue
-		}
-		if repaired := repairStaleConfiguredNamedSessionBead(store, b, stderr); repaired {
-			continue
-		}
 		missingSince := staleSessionMissingSince(b.Metadata)
 		if missingSince.IsZero() {
+			if configuredNamedSessionFreshPostCreateWindow(b, now) {
+				_ = store.SetMetadata(b.ID, staleSessionMissingSinceMetadata, now.UTC().Format(time.RFC3339))
+				continue
+			}
+			if strings.TrimSpace(b.Metadata["configured_named_session"]) == "true" {
+				if runtimeEmpty {
+					if repaired := repairStaleConfiguredNamedSessionBead(store, b, stderr); repaired {
+						continue
+					}
+				}
+				_ = store.SetMetadata(b.ID, staleSessionMissingSinceMetadata, now.UTC().Format(time.RFC3339))
+				continue
+			}
 			if eager {
 				if closeBead(store, b.ID, "stale-session", now.UTC(), stderr) {
 					fmt.Fprintf(stderr, "WARN: reconciler: reaped stale session bead %s — tmux session %q not found\n", b.ID, sn) //nolint:errcheck
@@ -1288,6 +1316,9 @@ func reapStaleSessionBeadsWithMode(
 			continue
 		}
 		if now.Sub(missingSince) < staleCreatingStateTimeout {
+			continue
+		}
+		if repaired := repairStaleConfiguredNamedSessionBead(store, b, stderr); repaired {
 			continue
 		}
 		if closeBead(store, b.ID, "stale-session", now.UTC(), stderr) {
@@ -1312,15 +1343,30 @@ func configuredNamedSessionFreshPostCreateWindow(b beads.Bead, now time.Time) bo
 	return now.Sub(creationCompleteAt) < staleCreatingStateTimeout
 }
 
+func repairSessionKeyForMetadata(meta map[string]string) string {
+	if strings.TrimSpace(meta["session_id_flag"]) == "" &&
+		(strings.TrimSpace(meta["resume_flag"]) != "" ||
+			strings.TrimSpace(meta["resume_command"]) != "" ||
+			strings.TrimSpace(meta["resume_style"]) != "") {
+		return ""
+	}
+	newKey, err := session.GenerateSessionKey()
+	if err != nil {
+		return ""
+	}
+	return newKey
+}
+
 func repairStaleConfiguredNamedSessionBead(store beads.Store, b beads.Bead, stderr io.Writer) bool {
 	if store == nil || !isNamedSessionBead(b) {
 		return false
 	}
-	newSessionKey := ""
-	if newKey, err := session.GenerateSessionKey(); err == nil {
-		newSessionKey = newKey
-	}
+	newSessionKey := repairSessionKeyForMetadata(b.Metadata)
 	batch := session.ConfigDriftResetPatch(session.StateCreating, newSessionKey)
+	batch[staleSessionMissingSinceMetadata] = ""
+	if newSessionKey == "" {
+		batch["session_key"] = ""
+	}
 	if err := setMetaBatch(store, b.ID, batch, stderr); err != nil {
 		return false
 	}

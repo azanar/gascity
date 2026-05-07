@@ -329,6 +329,27 @@ func TestStateCache_RefreshLogIsOptInViaEnvVar(t *testing.T) {
 			t.Errorf("expected refresh-failed log regardless of GC_LOG_TMUX_CACHE, got %q", got)
 		}
 	})
+
+	t.Run("logs previous sessions when server disappears", func(t *testing.T) {
+		buf.Reset()
+		t.Setenv("GC_LOG_TMUX_CACHE", "")
+
+		f := &mockFetcher{sessions: map[string]bool{"mayor": true, "deacon": true}}
+		cache := NewStateCache(f, 50*time.Millisecond)
+		cache.IsRunning("mayor")
+
+		f.setResult(nil, ErrNoServer)
+		cache.Invalidate()
+		cache.IsRunning("mayor")
+
+		got := buf.String()
+		if !strings.Contains(got, "tmux state cache: server disappeared after previously seeing 2 sessions") {
+			t.Fatalf("expected server-disappeared log, got %q", got)
+		}
+		if !strings.Contains(got, "deacon,mayor") {
+			t.Fatalf("expected previous session names in log, got %q", got)
+		}
+	})
 }
 
 func TestIsNoServerErrorRecognizesSentinel(t *testing.T) {

@@ -1312,11 +1312,11 @@ func resetConfiguredNamedSessionForConfigDrift(
 			fmt.Fprintf(stderr, "session reconciler: stopping config-drift named session %s: %v\n", sessionName, err) //nolint:errcheck
 		}
 	}
-	newSessionKey := ""
-	if newKey, err := sessionpkg.GenerateSessionKey(); err == nil {
-		newSessionKey = newKey
-	}
+	newSessionKey := repairSessionKeyForMetadata(session.Metadata)
 	batch := sessionpkg.ConfigDriftResetPatch(sessionpkg.State(nextState), newSessionKey)
+	if newSessionKey == "" {
+		batch["session_key"] = ""
+	}
 	batch[namedSessionConfigDriftDeferredAtMetadata] = ""
 	batch[namedSessionConfigDriftDeferredKeyMetadata] = ""
 	if err := store.SetMetadataBatch(session.ID, batch); err != nil {

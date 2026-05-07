@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -121,11 +122,20 @@ func (c *StateCache) refresh() {
 		ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
 		defer cancel()
 
+		c.mu.RLock()
+		prevSessions := cloneSessionMap(c.sessions)
+		prevFetchedAt := c.fetchedAt
+		c.mu.RUnlock()
+
 		start := time.Now()
 		sessions, err := c.fetcher.FetchRunning(ctx)
 		elapsed := time.Since(start)
 
 		if err != nil {
+			if isNoServerError(err) && len(prevSessions) > 0 {
+				log.Printf("tmux state cache: server disappeared after previously seeing %d sessions (%s) in %v",
+					len(prevSessions), strings.Join(sortedSessionNames(prevSessions), ","), time.Since(prevFetchedAt).Round(time.Millisecond))
+			}
 			log.Printf("tmux state cache: refresh failed in %v: %v", elapsed, err)
 			c.mu.Lock()
 			c.lastError = err
@@ -148,6 +158,31 @@ func (c *StateCache) refresh() {
 		c.mu.Unlock()
 		return nil, nil
 	})
+}
+
+func cloneSessionMap(src map[string]bool) map[string]bool {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(map[string]bool, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
+
+func sortedSessionNames(sessions map[string]bool) []string {
+	if len(sessions) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(sessions))
+	for name, running := range sessions {
+		if running {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 // tmuxFetcher implements StateFetcher using a real Tmux instance.

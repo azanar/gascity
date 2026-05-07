@@ -18,6 +18,8 @@ import (
 	"github.com/gastownhall/gascity/internal/telemetry"
 )
 
+const depListBatchChunkSize = 128
+
 // CommandRunner executes a command in the given directory and returns stdout bytes.
 // The dir argument sets the working directory; name and args specify the command.
 type CommandRunner func(dir, name string, args ...string) ([]byte, error)
@@ -870,6 +872,24 @@ func (s *BdStore) DepListBatch(ids []string) (map[string][]Dep, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
+	result := make(map[string][]Dep, len(ids))
+	for start := 0; start < len(ids); start += depListBatchChunkSize {
+		end := start + depListBatchChunkSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		chunkDeps, err := s.depListBatchChunk(ids[start:end])
+		if err != nil {
+			return nil, err
+		}
+		for id, deps := range chunkDeps {
+			result[id] = append(result[id], deps...)
+		}
+	}
+	return result, nil
+}
+
+func (s *BdStore) depListBatchChunk(ids []string) (map[string][]Dep, error) {
 	args := append([]string{"dep", "list"}, ids...)
 	args = append(args, "--json")
 	out, err := s.runner(s.dir, "bd", args...)

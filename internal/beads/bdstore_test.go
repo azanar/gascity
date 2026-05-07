@@ -1490,6 +1490,41 @@ func TestBdStoreDepListEmpty(t *testing.T) {
 	}
 }
 
+func TestBdStoreDepListBatchChunksAndMerges(t *testing.T) {
+	var calls []string
+	runner := func(_, name string, args ...string) ([]byte, error) {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		if len(args) < 4 {
+			return nil, fmt.Errorf("unexpected short args: %v", args)
+		}
+		firstID := args[2]
+		lastID := args[len(args)-2]
+		out := fmt.Sprintf(`[{"issue_id":"%s","depends_on_id":"dep-%s","type":"blocks"},{"issue_id":"%s","depends_on_id":"dep-%s","type":"blocks"}]`, firstID, firstID, lastID, lastID)
+		return []byte(out), nil
+	}
+	s := beads.NewBdStore("/city", runner)
+
+	ids := make([]string, 128+5)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("bd-%03d", i)
+	}
+
+	deps, err := s.DepListBatch(ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 2 {
+		t.Fatalf("runner calls = %d, want 2", len(calls))
+	}
+	if len(deps[ids[0]]) != 1 || deps[ids[0]][0].DependsOnID != "dep-"+ids[0] {
+		t.Fatalf("deps[%q] = %+v, want merged first-chunk dep", ids[0], deps[ids[0]])
+	}
+	lastID := ids[len(ids)-1]
+	if len(deps[lastID]) != 1 || deps[lastID][0].DependsOnID != "dep-"+lastID {
+		t.Fatalf("deps[%q] = %+v, want merged second-chunk dep", lastID, deps[lastID])
+	}
+}
+
 func TestExecCommandRunnerWithEnvOverridesInheritedValues(t *testing.T) {
 	t.Setenv("GC_CITY_PATH", "/wrong")
 	t.Setenv("GC_DOLT_PORT", "9999")

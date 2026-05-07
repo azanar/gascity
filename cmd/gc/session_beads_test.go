@@ -3116,6 +3116,9 @@ func TestReapStaleSessionBeadsWithMode_EagerReapsFirstMissingTick(t *testing.T) 
 func TestReapStaleSessionBeads_ConfiguredNamedSessionRepairsInPlace(t *testing.T) {
 	store := beads.NewMemStore()
 	sp := runtime.NewFake()
+	if err := sp.Start(context.Background(), "other-live-session", runtime.Config{}); err != nil {
+		t.Fatalf("Start(other-live-session): %v", err)
+	}
 	created, err := store.Create(beads.Bead{
 		Title:  "mayor",
 		Type:   sessionBeadType,
@@ -3144,7 +3147,29 @@ func TestReapStaleSessionBeads_ConfiguredNamedSessionRepairsInPlace(t *testing.T
 
 	got := reapStaleSessionBeads(store, sp, nil, clk, &stderr)
 	if got != 0 {
-		t.Fatalf("reapStaleSessionBeads() = %d, want 0 for configured named in-place repair\nstderr: %s", got, stderr.String())
+		t.Fatalf("first reapStaleSessionBeads() = %d, want 0 for configured named first-miss grace\nstderr: %s", got, stderr.String())
+	}
+
+	recorded, err := store.Get(created.ID)
+	if err != nil {
+		t.Fatalf("Get(after first miss): %v", err)
+	}
+	if recorded.Metadata["pending_create_claim"] != "" {
+		t.Fatalf("pending_create_claim after first miss = %q, want empty", recorded.Metadata["pending_create_claim"])
+	}
+	if got := strings.TrimSpace(recorded.Metadata[staleSessionMissingSinceMetadata]); got == "" {
+		t.Fatal("stale_session_missing_since empty after first miss, want confirmation timestamp")
+	}
+	if strings.Contains(stderr.String(), "marked stale configured named session bead") {
+		t.Fatalf("stderr after first miss = %q, want no immediate repair log", stderr.String())
+	}
+
+	clk.Time = clk.Time.Add(staleCreatingStateTimeout + time.Second)
+	stderr.Reset()
+
+	got = reapStaleSessionBeads(store, sp, nil, clk, &stderr)
+	if got != 0 {
+		t.Fatalf("second reapStaleSessionBeads() = %d, want 0 for configured named in-place repair\nstderr: %s", got, stderr.String())
 	}
 
 	all := allSessionBeads(t, store)
@@ -3245,5 +3270,172 @@ func TestReapStaleSessionBeads_ConfiguredNamedSessionSkipsFreshCreationComplete(
 	}
 	if strings.Contains(stderr.String(), "marked stale configured named session bead") {
 		t.Fatalf("stderr = %q, want no immediate repair log during fresh post-create grace", stderr.String())
+	}
+}
+
+func TestReapStaleSessionBeads_ConfiguredNamedResumeOnlySessionClearsStaleKey(t *testing.T) {
+	store := beads.NewMemStore()
+	sp := runtime.NewFake()
+	if err := sp.Start(context.Background(), "other-live-session", runtime.Config{}); err != nil {
+		t.Fatalf("Start(other-live-session): %v", err)
+	}
+	created, err := store.Create(beads.Bead{
+		Title:  "mayor",
+		Type:   sessionBeadType,
+		Status: "open",
+		Labels: []string{sessionBeadLabel},
+		Metadata: map[string]string{
+			"session_name":              "mayor",
+			"alias":                     "mayor",
+			"state":                     "active",
+			"template":                  "mayor",
+			"configured_named_session":  "true",
+			"configured_named_identity": "mayor",
+			"configured_named_mode":     "always",
+			"pin_awake":                 "true",
+			"started_config_hash":       "started-hash",
+			"started_live_hash":         "live-hash",
+			"live_hash":                 "live-hash",
+			"session_key":               "stale-session-key",
+			"resume_flag":               "resume",
+			"resume_style":              "subcommand",
+			"resume_command":            "codex resume {{.SessionKey}}",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	clk := &clock.Fake{Time: created.CreatedAt.Add(2 * time.Minute)}
+	var stderr bytes.Buffer
+
+	got := reapStaleSessionBeads(store, sp, nil, clk, &stderr)
+	if got != 0 {
+		t.Fatalf("first reapStaleSessionBeads() = %d, want 0 for configured named first-miss grace\nstderr: %s", got, stderr.String())
+	}
+
+	recorded, err := store.Get(created.ID)
+	if err != nil {
+		t.Fatalf("Get(after first miss): %v", err)
+	}
+	if recorded.Metadata["session_key"] != "stale-session-key" {
+		t.Fatalf("session_key after first miss = %q, want preserved before repair", recorded.Metadata["session_key"])
+	}
+	if got := strings.TrimSpace(recorded.Metadata[staleSessionMissingSinceMetadata]); got == "" {
+		t.Fatal("stale_session_missing_since empty after first miss, want confirmation timestamp")
+	}
+
+	clk.Time = clk.Time.Add(staleCreatingStateTimeout + time.Second)
+	stderr.Reset()
+
+	got = reapStaleSessionBeads(store, sp, nil, clk, &stderr)
+	if got != 0 {
+		t.Fatalf("second reapStaleSessionBeads() = %d, want 0 for configured named in-place repair\nstderr: %s", got, stderr.String())
+	}
+
+	repaired, err := store.Get(created.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if repaired.Metadata["pending_create_claim"] != "true" {
+		t.Fatalf("pending_create_claim = %q, want true", repaired.Metadata["pending_create_claim"])
+	}
+	if repaired.Metadata["state"] != "creating" {
+		t.Fatalf("state = %q, want creating", repaired.Metadata["state"])
+	}
+	if repaired.Metadata["session_key"] != "" {
+		t.Fatalf("session_key = %q, want cleared for resume-only provider", repaired.Metadata["session_key"])
+	}
+	if repaired.Metadata["continuation_reset_pending"] != "true" {
+		t.Fatalf("continuation_reset_pending = %q, want true", repaired.Metadata["continuation_reset_pending"])
+	}
+}
+
+func TestReapStaleSessionBeads_ConfiguredNamedSessionRepairsImmediatelyWhenRuntimeEmpty(t *testing.T) {
+	store := beads.NewMemStore()
+	sp := runtime.NewFake()
+	created, err := store.Create(beads.Bead{
+		Title:  "mayor",
+		Type:   sessionBeadType,
+		Status: "open",
+		Labels: []string{sessionBeadLabel},
+		Metadata: map[string]string{
+			"session_name":              "mayor",
+			"alias":                     "mayor",
+			"state":                     "active",
+			"template":                  "mayor",
+			"configured_named_session":  "true",
+			"configured_named_identity": "mayor",
+			"configured_named_mode":     "always",
+			"pin_awake":                 "true",
+			"started_config_hash":       "started-hash",
+			"started_live_hash":         "live-hash",
+			"live_hash":                 "live-hash",
+			"session_key":               "stale-session-key",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	clk := &clock.Fake{Time: created.CreatedAt.Add(2 * time.Minute)}
+	var stderr bytes.Buffer
+
+	got := reapStaleSessionBeads(store, sp, nil, clk, &stderr)
+	if got != 0 {
+		t.Fatalf("reapStaleSessionBeads() = %d, want 0 for configured named immediate repair on empty runtime\nstderr: %s", got, stderr.String())
+	}
+
+	repaired, err := store.Get(created.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if repaired.Metadata["pending_create_claim"] != "true" {
+		t.Fatalf("pending_create_claim = %q, want true", repaired.Metadata["pending_create_claim"])
+	}
+	if repaired.Metadata["state"] != "creating" {
+		t.Fatalf("state = %q, want creating", repaired.Metadata["state"])
+	}
+	if repaired.Metadata[staleSessionMissingSinceMetadata] != "" {
+		t.Fatalf("stale_session_missing_since = %q, want cleared on immediate repair", repaired.Metadata[staleSessionMissingSinceMetadata])
+	}
+}
+
+func TestReapStaleSessionBeads_ReapsExpiredPendingCreatePoolSession(t *testing.T) {
+	store := beads.NewMemStore()
+	sp := runtime.NewFake()
+	created, err := store.Create(beads.Bead{
+		Title:  "polecat-codex",
+		Type:   sessionBeadType,
+		Status: "open",
+		Labels: []string{sessionBeadLabel},
+		Metadata: map[string]string{
+			"session_name":         "polecat-codex-ga-stale01",
+			"alias":                "polecat-codex-1",
+			"state":                "creating",
+			"template":             "polecat-codex",
+			"pool_managed":         "true",
+			"pool_slot":            "1",
+			"pending_create_claim": "true",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	clk := &clock.Fake{Time: created.CreatedAt.Add(2 * time.Minute)}
+	var stderr bytes.Buffer
+
+	got := reapStaleSessionBeads(store, sp, nil, clk, &stderr)
+	if got != 1 {
+		t.Fatalf("reapStaleSessionBeads() = %d, want 1\nstderr: %s", got, stderr.String())
+	}
+
+	reaped, err := store.Get(created.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if reaped.Status != "closed" {
+		t.Fatalf("status = %q, want closed", reaped.Status)
+	}
+	if reaped.Metadata["close_reason"] != "stale-session" {
+		t.Fatalf("close_reason = %q, want stale-session", reaped.Metadata["close_reason"])
 	}
 }

@@ -228,6 +228,15 @@ func (p *Provider) IsRunning(name string) bool {
 	return p.cache.IsRunning(name)
 }
 
+// SessionNames returns the currently known tmux session names.
+func (p *Provider) SessionNames() []string {
+	sessions, err := p.tm.ListSessions()
+	if err != nil {
+		return nil
+	}
+	return sessions
+}
+
 // IsAttached reports whether a user terminal is connected to the named session.
 func (p *Provider) IsAttached(name string) bool {
 	return p.tm.IsSessionAttached(name)

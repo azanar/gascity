@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -212,6 +213,18 @@ func (f *Fake) IsRunning(name string) bool {
 	}
 	_, exists := f.sessions[name]
 	return exists
+}
+
+// SessionNames returns the currently running fake session names.
+func (f *Fake) SessionNames() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	names := make([]string, 0, len(f.sessions))
+	for name := range f.sessions {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	return names
 }
 
 // SetAttached sets the canned attached state for the named session.

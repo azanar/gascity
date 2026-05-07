@@ -407,6 +407,25 @@ func TestStageHookFilesFallsBackToLegacyClaudeHook(t *testing.T) {
 	t.Fatal("stageHookFiles() did not stage hooks/claude.json")
 }
 
+func TestStageHookFilesSkipsMaterializedClaudeSkillsDir(t *testing.T) {
+	cityDir := filepath.Join(t.TempDir(), "city")
+	workDir := filepath.Join(cityDir, "worker")
+	skillsDir := filepath.Join(workDir, ".claude", "skills", "plan")
+	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q): %v", skillsDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(skillsDir, "SKILL.md"), []byte("body"), 0o644); err != nil {
+		t.Fatalf("WriteFile(SKILL.md): %v", err)
+	}
+
+	got := stageHookFiles(nil, cityDir, workDir)
+	for _, entry := range got {
+		if entry.RelDst == path.Join("worker", ".claude", "skills") {
+			t.Fatalf("stageHookFiles() staged generated skill sink %q; materialized skills are runtime output from pre_start and must not enter CopyFiles fingerprinting", entry.RelDst)
+		}
+	}
+}
+
 func TestConfiguredRigNameMatchesRigByPathWithoutCreatingDirs(t *testing.T) {
 	cityPath := t.TempDir()
 	rigRoot := filepath.Join(cityPath, "repos", "demo")

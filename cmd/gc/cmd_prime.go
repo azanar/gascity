@@ -145,6 +145,9 @@ func doPrimeWithHookFormat(args []string, stdout, stderr io.Writer, hookMode boo
 	if len(args) > 0 {
 		agentName = args[0]
 	}
+	if hookMode && strings.TrimSpace(agentName) == "" {
+		agentName = primeHookAgentFromWorkDir()
+	}
 
 	hookContext := primeHookContext{}
 	suppressHookPrompt := false
@@ -317,7 +320,7 @@ func doPrimeWithHookFormat(args []string, stdout, stderr io.Writer, hookMode boo
 	// when the agent has no prompt_template and doesn't match a builtin
 	// worker prompt — a supported config shape, so the default prompt is
 	// the correct output even under --strict.
-	fmt.Fprint(stdout, defaultPrimePrompt) //nolint:errcheck // best-effort stdout
+	writePrimePromptWithFormat(stdout, cityName, agentName, defaultPrimePrompt, hookMode, hookFormat, suppressHookPrompt)
 	return 0
 }
 
@@ -363,6 +366,21 @@ func primeHookSessionTemplate(cityPath string) string {
 		return template
 	}
 	return strings.TrimSpace(sessionBead.Metadata["common_name"])
+}
+
+func primeHookAgentFromWorkDir() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	clean := filepath.Clean(cwd)
+	parts := strings.Split(clean, string(os.PathSeparator))
+	for i := 0; i+2 < len(parts); i++ {
+		if parts[i] == ".gc" && parts[i+1] == "agents" {
+			return parts[i+2]
+		}
+	}
+	return ""
 }
 
 func prependHookBeacon(cityName, agentName, prompt string) string {

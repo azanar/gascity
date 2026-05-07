@@ -812,14 +812,6 @@ func stageHookFiles(copyFiles []runtime.CopyEntry, cityPath, workDir string) []r
 		}
 	}
 
-	// Stage Claude skills directory (if materialized).
-	skillsDir := filepath.Join(workDir, ".claude", "skills")
-	if info, err := os.Stat(skillsDir); err == nil && info.IsDir() {
-		copyFiles = append(copyFiles, runtime.CopyEntry{
-			Src: skillsDir, RelDst: path.Join(relWorkDir, ".claude", "skills"),
-			Probed: true, ContentHash: runtime.HashPathContent(skillsDir),
-		})
-	}
 	// cityDir-based hooks: claude (.gc/settings.json).
 	// Skip if settingsArgs already added it.
 	// These are city-root relative, so no relWorkDir prefix needed.

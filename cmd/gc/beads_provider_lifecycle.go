@@ -1276,10 +1276,12 @@ func providerLifecycleProcessEnv(cityPath, provider string) []string {
 // providerOpTimeout returns the context timeout for a given lifecycle
 // operation. The "start" and "recover" operations get a longer timeout
 // because dolt server startup can take 30+ seconds for large data dirs.
+// "init" gets the same longer timeout because canonical bd init may need
+// to verify a just-published managed store before startup can continue.
 // All other operations use 30s.
 func providerOpTimeout(op string) time.Duration {
 	switch op {
-	case "start", "recover":
+	case "start", "recover", "init":
 		return 120 * time.Second
 	default:
 		return 30 * time.Second
