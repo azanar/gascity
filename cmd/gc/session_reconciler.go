@@ -415,6 +415,12 @@ func reconcileSessionBeadsTraced(
 		}
 		running := obs.Running
 		alive := obs.Alive
+		ownedPendingCreateRuntime := running &&
+			shouldRollbackPendingCreate(session) &&
+			runningSessionMatchesPendingCreate(session, name, sp)
+		if ownedPendingCreateRuntime {
+			alive = true
+		}
 
 		// Zombie capture: session exists but process dead — grab scrollback for forensics.
 		if running && !alive {
@@ -428,7 +434,7 @@ func reconcileSessionBeadsTraced(
 				telemetry.RecordAgentCrash(context.Background(), tp.DisplayName(), output)
 			}
 		}
-		if alive && shouldRollbackPendingCreate(session) && !runningSessionMatchesPendingCreate(session, name, sp) {
+		if running && shouldRollbackPendingCreate(session) && !ownedPendingCreateRuntime {
 			fmt.Fprintf(stderr, "session reconciler: rolling back pending create %s: live runtime belongs to another session\n", name) //nolint:errcheck
 			if trace != nil {
 				trace.recordDecision("reconciler.session.pending_create", tp.TemplateName, name, "pending_create_rollback", "rollback", nil, nil, "")
@@ -443,7 +449,17 @@ func reconcileSessionBeadsTraced(
 		// worker wave until the stale awake bead ages out.
 		if dops != nil {
 			if acked, _ := dops.isDrainAcked(name); acked {
-				if !alive && staleOrLegacyDrainAckBeforeStart(*session, sp, name) {
+				configuredNamedMode := tp.ConfiguredNamedMode
+				if configuredNamedMode == "" {
+					configuredNamedMode = session.Metadata[namedSessionModeMetadata]
+				}
+				if configuredNamedMode == "always" {
+					_ = dops.clearDrain(name)
+					clearReconcilerDrainAckMetadata(sp, name)
+					if trace != nil {
+						trace.recordDecision("reconciler.session.drain_ack", tp.TemplateName, name, "always_named", "clear", nil, nil, "")
+					}
+				} else if !alive && staleOrLegacyDrainAckBeforeStart(*session, sp, name) {
 					clearReconcilerDrainAckMetadata(sp, name)
 				} else {
 					if staleReconcilerDrainAck(*session, sp, name) {

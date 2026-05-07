@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	goruntime "runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -272,6 +274,7 @@ func (t *Tmux) NewSession(name, workDir string) error {
 	// at 80x24 even after a client attaches. Reset to "latest" so the window
 	// adapts to the largest attached client.
 	t.run("set-option", "-wt", name, "window-size", "latest") //nolint:errcheck // best-effort
+	t.installTracePaneDiedHook(name)                           //nolint:errcheck // debug-only best-effort
 	return nil
 }
 
@@ -296,6 +299,7 @@ func (t *Tmux) NewSessionWithCommand(name, workDir, command string) error {
 	}
 	// tmux 3.3+: reset window-size from manual to latest (see NewSession).
 	t.run("set-option", "-wt", name, "window-size", "latest") //nolint:errcheck // best-effort
+	t.installTracePaneDiedHook(name)                           //nolint:errcheck // debug-only best-effort
 	return nil
 }
 
@@ -363,7 +367,23 @@ func (t *Tmux) NewSessionWithCommandAndEnv(name, workDir, command string, env ma
 	}
 	// tmux 3.3+: reset window-size from manual to latest (see NewSession).
 	t.run("set-option", "-wt", name, "window-size", "latest") //nolint:errcheck // best-effort
+	t.installTracePaneDiedHook(name)                           //nolint:errcheck // debug-only best-effort
 	return nil
+}
+
+func (t *Tmux) installTracePaneDiedHook(session string) error {
+	if os.Getenv("GC_TMUX_TRACE") != "1" {
+		return nil
+	}
+	if err := validateSessionName(session); err != nil {
+		return err
+	}
+	hookCmd := `run-shell "printf '%s [TMUX-PANE-DIED] session=%s exit=%s\n' \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" '#{session_name}' '#{pane_dead_status}' >> \"$HOME/.gc/tmux-pane-died.log\""`
+	_, err := t.run("set-hook", "-t", session, "pane-died", hookCmd)
+	if err != nil {
+		log.Printf("[TMUX-TRACE] failed to install pane-died hook for session=%s: %v", session, err)
+	}
+	return err
 }
 
 // EnsureSessionFresh ensures a session is available and healthy.
@@ -444,6 +464,7 @@ const processKillGracePeriod = 2 * time.Second
 //
 // This ensures Claude processes and all their children are properly terminated.
 func (t *Tmux) KillSessionWithProcesses(name string) error {
+	traceKillSessionWithProcesses(name)
 	// Get the pane PID
 	pid, err := t.GetPanePID(name)
 	if err != nil {
@@ -505,6 +526,34 @@ func (t *Tmux) KillSessionWithProcesses(name string) error {
 		return nil
 	}
 	return err
+}
+
+func traceKillSessionWithProcesses(name string) {
+	if os.Getenv("GC_TMUX_TRACE") != "1" {
+		return
+	}
+	pcs := make([]uintptr, 16)
+	n := goruntime.Callers(2, pcs)
+	frames := goruntime.CallersFrames(pcs[:n])
+	callers := make([]string, 0, 6)
+	for len(callers) < 6 {
+		frame, more := frames.Next()
+		if !strings.Contains(frame.File, "gascity") {
+			if !more {
+				break
+			}
+			continue
+		}
+		callers = append(callers, fmt.Sprintf("%s:%d", filepath.Base(frame.File), frame.Line))
+		if !more {
+			break
+		}
+	}
+	if len(callers) == 0 {
+		log.Printf("[TMUX-TRACE] killSessionWithProcesses session=%s callers=unavailable", name)
+		return
+	}
+	log.Printf("[TMUX-TRACE] killSessionWithProcesses session=%s callers=%s", name, strings.Join(callers, " <- "))
 }
 
 // KillSessionWithProcessesExcluding is like KillSessionWithProcesses but excludes

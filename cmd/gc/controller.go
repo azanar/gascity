@@ -158,6 +158,7 @@ func handleControllerConn(
 		line := scanner.Text()
 		switch {
 		case line == "stop":
+			fmt.Fprintf(os.Stderr, "gc controller: stop command received for city %q (pid=%d)\n", cityPath, os.Getpid()) //nolint:errcheck // best-effort stderr
 			cancelFn()
 			conn.Write([]byte("ok\n")) //nolint:errcheck // best-effort ack
 		case line == "ping":

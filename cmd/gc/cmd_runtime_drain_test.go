@@ -55,6 +55,7 @@ func (f *fakeDrainOps) clearDrain(sessionName string) error {
 	if f.err != nil {
 		return f.err
 	}
+	delete(f.acked, sessionName)
 	delete(f.draining, sessionName)
 	delete(f.drainTimes, sessionName)
 	return nil

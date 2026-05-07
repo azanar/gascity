@@ -197,9 +197,6 @@ type tmuxFetcher struct {
 func (f *tmuxFetcher) FetchRunning(ctx context.Context) (map[string]bool, error) {
 	out, err := f.tm.runCtx(ctx, "list-panes", "-a", "-F", "#{session_name}\t#{pane_dead}")
 	if err != nil {
-		if isNoServerError(err) {
-			return map[string]bool{}, nil // No server = no sessions
-		}
 		return nil, err
 	}
 	if out == "" {

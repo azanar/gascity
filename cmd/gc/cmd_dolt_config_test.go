@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,6 +38,67 @@ func TestDoltConfigWriteManagedCmd(t *testing.T) {
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("config missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestEnsureManagedDoltPersistedGlobalsCreatesConfig(t *testing.T) {
+	cityPath := t.TempDir()
+	if err := ensureManagedDoltPersistedGlobals(cityPath); err != nil {
+		t.Fatalf("ensureManagedDoltPersistedGlobals: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(cityPath, ".dolt", "config.json"))
+	if err != nil {
+		t.Fatalf("ReadFile(config.json): %v", err)
+	}
+	var cfg map[string]string
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("Unmarshal(config.json): %v\n%s", err, data)
+	}
+	for key, want := range managedDoltPersistedGlobals {
+		if got := cfg[key]; got != want {
+			t.Fatalf("config[%q] = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestEnsureManagedDoltPersistedGlobalsPreservesExistingConfig(t *testing.T) {
+	cityPath := t.TempDir()
+	configPath := filepath.Join(cityPath, ".dolt", "config.json")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll(.dolt): %v", err)
+	}
+	initial := map[string]string{
+		"user.name":                           "Ed",
+		"sqlserver.global.dolt_stats_enabled": "true",
+	}
+	encoded, err := json.MarshalIndent(initial, "", "  ")
+	if err != nil {
+		t.Fatalf("MarshalIndent(initial): %v", err)
+	}
+	if err := os.WriteFile(configPath, append(encoded, '\n'), 0o644); err != nil {
+		t.Fatalf("WriteFile(config.json): %v", err)
+	}
+
+	if err := ensureManagedDoltPersistedGlobals(cityPath); err != nil {
+		t.Fatalf("ensureManagedDoltPersistedGlobals: %v", err)
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("ReadFile(config.json): %v", err)
+	}
+	var cfg map[string]string
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("Unmarshal(config.json): %v\n%s", err, data)
+	}
+	if got := cfg["user.name"]; got != "Ed" {
+		t.Fatalf("config[user.name] = %q, want %q", got, "Ed")
+	}
+	for key, want := range managedDoltPersistedGlobals {
+		if got := cfg[key]; got != want {
+			t.Fatalf("config[%q] = %q, want %q", key, got, want)
 		}
 	}
 }

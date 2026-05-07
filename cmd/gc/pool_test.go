@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gastownhall/gascity/internal/beads/contract"
 	"github.com/gastownhall/gascity/internal/config"
@@ -1122,6 +1123,12 @@ func TestShellScaleCheck_NoBEADS_DOLT_SERVER_PORT_Injection(t *testing.T) {
 	// level (PR #207), not in shellScaleCheck itself. See
 	// TestBuildDesiredState_PoolCheckInjectsDoltPortForRigScopedAgent
 	// for the integration test.
+}
+
+func TestBdProbeTimeoutBudget(t *testing.T) {
+	if got := bdProbeTimeout; got != 30*time.Second {
+		t.Fatalf("bdProbeTimeout = %s, want %s", got, 30*time.Second)
+	}
 }
 
 func runExternal(t *testing.T, dir, name string, args ...string) {

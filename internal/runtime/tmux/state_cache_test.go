@@ -231,7 +231,8 @@ func TestStateCache_EmptySessionsMap(t *testing.T) {
 }
 
 func TestStateCache_NilSessionsMap(t *testing.T) {
-	// FetchRunning returns nil map (e.g., no tmux server) — same as empty.
+	// FetchRunning returning a nil map without an error is treated the same as
+	// an empty success result.
 	f := &mockFetcher{
 		sessions: nil,
 	}
@@ -239,6 +240,31 @@ func TestStateCache_NilSessionsMap(t *testing.T) {
 
 	if cache.IsRunning("anything") {
 		t.Error("expected false for any session when fetch returns nil map")
+	}
+}
+
+func TestStateCache_NoServerPreservesLastKnownGoodUntilStaleTTL(t *testing.T) {
+	f := &mockFetcher{
+		sessions: map[string]bool{"mayor": true},
+	}
+	cache := NewStateCache(f, 50*time.Millisecond)
+	cache.staleTTL = 200 * time.Millisecond
+
+	if !cache.IsRunning("mayor") {
+		t.Fatal("expected mayor running initially")
+	}
+
+	f.setResult(nil, ErrNoServer)
+	cache.Invalidate()
+
+	if !cache.IsRunning("mayor") {
+		t.Fatal("expected mayor to remain running on transient no-server refresh failure")
+	}
+
+	time.Sleep(250 * time.Millisecond)
+
+	if cache.IsRunning("mayor") {
+		t.Fatal("expected mayor to be reported stopped after staleTTL expires")
 	}
 }
 

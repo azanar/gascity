@@ -254,6 +254,15 @@ func (cr *CityRuntime) crashTrack() crashTracker {
 // wisp GC, and dispatches orders.
 func (cr *CityRuntime) run(ctx context.Context) {
 	defer cr.shutdown()
+	exitStage := "startup"
+	cityStarted := false
+	defer func() {
+		if ctx.Err() != nil {
+			fmt.Fprintf(cr.stderr, "%s: city runtime exiting: stage=%s reason=%v started=%t\n", cr.logPrefix, exitStage, ctx.Err(), cityStarted) //nolint:errcheck // best-effort stderr
+			return
+		}
+		fmt.Fprintf(cr.stderr, "%s: city runtime exiting: stage=%s reason=returned_without_context_cancel started=%t\n", cr.logPrefix, exitStage, cityStarted) //nolint:errcheck // best-effort stderr
+	}()
 
 	dirty := cr.configDirty
 	if dirty == nil {
@@ -340,6 +349,7 @@ func (cr *CityRuntime) run(ctx context.Context) {
 	// Adoption barrier: ensure every running session has a bead.
 	// Runs on every startup (rerunnable, crash-safe).
 	adoptionComplete := false
+	exitStage = "adoption-barrier"
 	if !retryStartupStep("adoption-barrier", func() bool { return adoptionComplete }, func() {
 		if cr.onStatus != nil {
 			cr.onStatus("adopting_sessions")
@@ -450,6 +460,7 @@ func (cr *CityRuntime) run(ctx context.Context) {
 	// convergence index is populated, so later patrols can drain pending
 	// convergence beads.
 	convergenceStartupDone := convergenceStartupComplete(cr)
+	exitStage = "convergence-startup"
 	if !retryStartupStep("convergence-startup", func() bool { return convergenceStartupDone }, func() {
 		cr.convergenceStartupReconcile(ctx)
 		convergenceStartupDone = true
@@ -470,6 +481,8 @@ func (cr *CityRuntime) run(ctx context.Context) {
 	if cr.onStarted != nil {
 		cr.onStarted()
 	}
+	cityStarted = true
+	exitStage = "patrol"
 	fmt.Fprintln(cr.stdout, "City started.") //nolint:errcheck // best-effort stdout
 	if ctx.Err() != nil {
 		return

@@ -51,9 +51,9 @@ type ScaleCheckRunner func(command, dir string, env map[string]string) (string, 
 // exceeds this limit at any given moment.
 
 // bdProbeTimeout is the timeout for bd subprocess probes (scale_check,
-// work_query). Generous to accommodate bd calls that serialize through
-// a shared dolt sql-server when many pool probes run in parallel.
-const bdProbeTimeout = 180 * time.Second
+// work_query). Keep this bounded so a single wedged probe cannot pin the
+// reconciler for minutes and let named-session liveness drift unchecked.
+const bdProbeTimeout = 30 * time.Second
 
 // hookTimeout is the timeout for lifecycle hook commands (on_death,
 // on_boot). Kept shorter than probe timeout because hooks run

@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,7 +16,7 @@ import (
 	"github.com/gastownhall/gascity/internal/session"
 )
 
-func TestCityStatusNamedSessionsUseProvidedStore(t *testing.T) {
+func TestCityStatusNamedSessionsUseRuntimeLiveness(t *testing.T) {
 	sp := runtime.NewFake()
 	dops := newFakeDrainOps()
 	store := beads.NewMemStore()
@@ -25,18 +27,6 @@ func TestCityStatusNamedSessionsUseProvidedStore(t *testing.T) {
 	}
 	t.Cleanup(func() { openCityStoreAtForStatus = oldOpen })
 
-	if _, err := store.Create(beads.Bead{
-		Type:   session.BeadType,
-		Labels: []string{session.LabelSession},
-		Metadata: map[string]string{
-			"configured_named_session":  "true",
-			"configured_named_identity": "refinery",
-			"configured_named_mode":     "on_demand",
-		},
-	}); err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-
 	cfg := &config.City{
 		Workspace: config.Workspace{Name: "city"},
 		Agents:    []config.Agent{{Name: "refinery"}},
@@ -46,12 +36,16 @@ func TestCityStatusNamedSessionsUseProvidedStore(t *testing.T) {
 	}
 	var stdout, stderr bytes.Buffer
 	cityPath := filepath.Join(t.TempDir(), "city")
+	sessionName := cliSessionName(cityPath, "city", "refinery", cfg.Workspace.SessionTemplate)
+	if err := sp.Start(context.Background(), sessionName, runtime.Config{Command: "echo"}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
 	snapshot := collectCityStatusSnapshot(sp, cfg, cityPath, store, &stderr)
 	if len(snapshot.NamedSessions) != 1 {
 		t.Fatalf("named sessions = %d, want 1", len(snapshot.NamedSessions))
 	}
-	if snapshot.NamedSessions[0].Status != "materialized" {
-		t.Fatalf("named session status = %q, want materialized", snapshot.NamedSessions[0].Status)
+	if snapshot.NamedSessions[0].Status != "active" {
+		t.Fatalf("named session status = %q, want active", snapshot.NamedSessions[0].Status)
 	}
 	code := doCityStatus(sp, dops, cfg, cityPath, &stdout, &stderr)
 	if code != 0 {
@@ -61,8 +55,8 @@ func TestCityStatusNamedSessionsUseProvidedStore(t *testing.T) {
 	if !strings.Contains(out, "Named sessions:") {
 		t.Fatalf("stdout missing named sessions section, got:\n%s", out)
 	}
-	if !strings.Contains(out, "materialized (on_demand)") {
-		t.Fatalf("stdout = %q, want materialized named session status", out)
+	if !strings.Contains(out, "active (on_demand)") {
+		t.Fatalf("stdout = %q, want active named session status", out)
 	}
 }
 
@@ -78,6 +72,69 @@ func TestCityStatusJSONPreservesNilAgentsWhenEmpty(t *testing.T) {
 	status := cityStatusJSONFromSnapshot(cityStatusSnapshot{CityName: "city"}, StatusSummaryJSON{})
 	if status.Agents != nil {
 		t.Fatalf("Agents = %#v, want nil slice", status.Agents)
+	}
+}
+
+func TestCollectCitySessionCountsUsesSessionMetadataSummary(t *testing.T) {
+	store := beads.NewMemStore()
+	var closedID string
+	for i, bead := range []beads.Bead{
+		{
+			Type:   session.BeadType,
+			Status: "open",
+			Labels: []string{session.LabelSession},
+			Metadata: map[string]string{
+				"state": "active",
+			},
+		},
+		{
+			Type:   session.BeadType,
+			Status: "open",
+			Labels: []string{session.LabelSession},
+			Metadata: map[string]string{
+				"state": "suspended",
+			},
+		},
+		{
+			Type:   session.BeadType,
+			Status: "open",
+			Labels: []string{session.LabelSession},
+			Metadata: map[string]string{
+				"state": "creating",
+			},
+		},
+		{
+			Type:   session.BeadType,
+			Status: "open",
+			Labels: []string{session.LabelSession},
+			Metadata: map[string]string{
+				"state": "active",
+			},
+		},
+	} {
+		created, err := store.Create(bead)
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		if i == 3 {
+			closedID = created.ID
+		}
+	}
+	if err := store.Close(closedID); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	cityPath := filepath.Join(t.TempDir(), "city")
+	if err := os.MkdirAll(cityPath, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	summary, err := collectCitySessionCounts(cityPath, store, nil, nil)
+	if err != nil {
+		t.Fatalf("collectCitySessionCounts: %v", err)
+	}
+	if summary.ActiveSessions != 1 || summary.SuspendedSessions != 1 {
+		t.Fatalf("summary = %+v, want 1 active and 1 suspended", summary)
 	}
 }
 

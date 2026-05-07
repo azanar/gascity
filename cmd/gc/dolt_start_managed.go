@@ -54,6 +54,9 @@ func startManagedDoltProcessWithOptions(cityPath, host, port, user, logLevel str
 		if err := managedDoltPreflightCleanupFn(cityPath); err != nil {
 			return report, err
 		}
+		if err := ensureManagedDoltPersistedGlobals(cityPath); err != nil {
+			return report, err
+		}
 		if err := writeManagedDoltConfigFile(layout.ConfigFile, host, strconv.Itoa(currentPort), layout.DataDir, logLevel); err != nil {
 			return report, err
 		}
@@ -103,6 +106,18 @@ func startManagedDoltProcessWithOptions(cityPath, host, port, user, logLevel str
 
 		readyReport, readyErr := waitForManagedDoltReady(cityPath, host, strconv.Itoa(currentPort), user, cmd.Process.Pid, timeout, false)
 		if readyErr == nil && readyReport.Ready {
+			if err := managedDoltApplySafeGlobalsFn(cityPath, host, strconv.Itoa(currentPort), user); err != nil {
+				_ = terminateManagedDoltPID(cmd.Process.Pid)
+				_ = os.Remove(layout.PIDFile)
+				_ = writeDoltRuntimeStateFile(layout.StateFile, doltRuntimeState{
+					Running:   false,
+					PID:       0,
+					Port:      currentPort,
+					DataDir:   layout.DataDir,
+					StartedAt: time.Now().UTC().Format(time.RFC3339),
+				})
+				return report, fmt.Errorf("apply managed dolt globals: %w", err)
+			}
 			report.Ready = true
 			if publish {
 				if err := publishManagedDoltRuntimeStateIfOwned(cityPath); err != nil {

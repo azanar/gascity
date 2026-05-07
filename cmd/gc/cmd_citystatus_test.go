@@ -429,6 +429,40 @@ func TestCityStatusAgentSuspendedByRig(t *testing.T) {
 	}
 }
 
+func TestCityStatusPoolSnapshotDoesNotResolvePoolInstanceAsBeadID(t *testing.T) {
+	sp := runtime.NewFake()
+	dops := newFakeDrainOps()
+	store := &panicGetStatusStore{Store: beads.NewMemStore()}
+	cityPath := t.TempDir()
+
+	oldOpen := openCityStoreAtForStatus
+	openCityStoreAtForStatus = func(string) (beads.Store, error) {
+		return store, nil
+	}
+	t.Cleanup(func() { openCityStoreAtForStatus = oldOpen })
+
+	cfg := &config.City{
+		Workspace: config.Workspace{Name: "city"},
+		Agents: []config.Agent{
+			{Name: "dog", MinActiveSessions: intPtr(0), MaxActiveSessions: intPtr(3), ScaleCheck: "echo 1"},
+		},
+	}
+	sessionName := cliSessionName(cityPath, "city", "dog-1", cfg.Workspace.SessionTemplate)
+	if err := sp.Start(context.Background(), sessionName, runtime.Config{Command: "echo"}); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := doCityStatus(sp, dops, cfg, cityPath, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "dog-1") || !strings.Contains(out, "running") {
+		t.Fatalf("stdout = %q, want running pool instance", out)
+	}
+}
+
 func TestControllerStatusLine(t *testing.T) {
 	tests := []struct {
 		name string
@@ -664,6 +698,14 @@ type listErrorStore struct {
 
 func (s *listErrorStore) List(beads.ListQuery) ([]beads.Bead, error) {
 	return nil, errors.New("catalog unavailable")
+}
+
+type panicGetStatusStore struct {
+	beads.Store
+}
+
+func (s *panicGetStatusStore) Get(string) (beads.Bead, error) {
+	panic("unexpected store.Get during city status")
 }
 
 func TestControllerStatusGuidance(t *testing.T) {

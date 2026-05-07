@@ -1,14 +1,23 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/gastownhall/gascity/internal/fsys"
 	"github.com/spf13/cobra"
 )
+
+var managedDoltPersistedGlobals = map[string]string{
+	"sqlserver.global.dolt_stats_enabled":      "false",
+	"sqlserver.global.dolt_stats_paused":       "true",
+	"sqlserver.global.dolt_stats_gc_enabled":   "false",
+	"sqlserver.global.dolt_stats_job_interval": "3600000",
+}
 
 func newDoltConfigCmd(_ io.Writer, stderr io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
@@ -139,6 +148,50 @@ behavior:
 `, logLevel, port, host, dataDir)
 	if err := fsys.WriteFileAtomic(fsys.OSFS{}, path, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write config file: %w", err)
+	}
+	return nil
+}
+
+func ensureManagedDoltPersistedGlobals(cityPath string) error {
+	cityPath = strings.TrimSpace(cityPath)
+	if cityPath == "" {
+		return fmt.Errorf("missing city path")
+	}
+	configPath := filepath.Join(cityPath, ".dolt", "config.json")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		return fmt.Errorf("create local config dir: %w", err)
+	}
+
+	cfg := map[string]string{}
+	if data, err := os.ReadFile(configPath); err == nil {
+		if len(strings.TrimSpace(string(data))) != 0 {
+			if err := json.Unmarshal(data, &cfg); err != nil {
+				return fmt.Errorf("parse local config %s: %w", configPath, err)
+			}
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("read local config %s: %w", configPath, err)
+	}
+
+	changed := false
+	for key, want := range managedDoltPersistedGlobals {
+		if cfg[key] == want {
+			continue
+		}
+		cfg[key] = want
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+
+	encoded, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode local config %s: %w", configPath, err)
+	}
+	encoded = append(encoded, '\n')
+	if err := fsys.WriteFileAtomic(fsys.OSFS{}, configPath, encoded, 0o644); err != nil {
+		return fmt.Errorf("write local config %s: %w", configPath, err)
 	}
 	return nil
 }

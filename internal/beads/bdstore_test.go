@@ -1525,6 +1525,49 @@ func TestBdStoreDepListBatchChunksAndMerges(t *testing.T) {
 	}
 }
 
+func TestBdStoreDepListBatchIncludesRunnerOutputOnError(t *testing.T) {
+	runner := func(_, _ string, _ ...string) ([]byte, error) {
+		return []byte("fatal: lock timeout"), fmt.Errorf("exit status 1")
+	}
+	s := beads.NewBdStore("/city", runner)
+
+	_, err := s.DepListBatch([]string{"bd-1"})
+	if err == nil {
+		t.Fatal("DepListBatch error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "batch dep list (1 ids): exit status 1: fatal: lock timeout") {
+		t.Fatalf("DepListBatch error = %q, want runner output", err)
+	}
+}
+
+func TestBdStoreDepListBatchSkipsMissingIssueAndRetriesRemainder(t *testing.T) {
+	var calls [][]string
+	runner := func(_, _ string, args ...string) ([]byte, error) {
+		calls = append(calls, append([]string(nil), args...))
+		for _, arg := range args {
+			if arg == "ga-missing" {
+				return []byte(`{"error":"resolving ga-missing: no issue found matching \"ga-missing\"","schema_version":1}`), fmt.Errorf("exit status 1")
+			}
+		}
+		return []byte(`[{"issue_id":"ga-good","depends_on_id":"dep-ga-good","type":"blocks"}]`), nil
+	}
+	s := beads.NewBdStore("/city", runner)
+
+	deps, err := s.DepListBatch([]string{"ga-good", "ga-missing"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 2 {
+		t.Fatalf("runner calls = %d, want 2", len(calls))
+	}
+	if len(deps["ga-good"]) != 1 || deps["ga-good"][0].DependsOnID != "dep-ga-good" {
+		t.Fatalf("deps[ga-good] = %+v, want recovered dep", deps["ga-good"])
+	}
+	if _, ok := deps["ga-missing"]; ok {
+		t.Fatalf("deps unexpectedly contains ga-missing: %+v", deps["ga-missing"])
+	}
+}
+
 func TestExecCommandRunnerWithEnvOverridesInheritedValues(t *testing.T) {
 	t.Setenv("GC_CITY_PATH", "/wrong")
 	t.Setenv("GC_DOLT_PORT", "9999")

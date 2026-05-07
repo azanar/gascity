@@ -1193,6 +1193,72 @@ func TestReconcileSessionBeads_DrainAckHonoredAfterSessionExit(t *testing.T) {
 	}
 }
 
+func TestReconcileSessionBeads_DrainAckIgnoredForAlwaysNamedSession(t *testing.T) {
+	env := newReconcilerTestEnv()
+	env.cfg = &config.City{
+		Workspace:     config.Workspace{Name: "test-city"},
+		Agents:        []config.Agent{{Name: "worker", StartCommand: "true"}},
+		NamedSessions: []config.NamedSession{{Template: "worker", Mode: "always"}},
+	}
+	sessionName := config.NamedSessionRuntimeName(env.cfg.Workspace.Name, env.cfg.Workspace, "worker")
+	session := env.createSessionBead(sessionName, "worker")
+	env.markSessionActive(&session)
+	env.setSessionMetadata(&session, map[string]string{
+		namedSessionMetadataKey:      "true",
+		namedSessionIdentityMetadata: "worker",
+		namedSessionModeMetadata:     "always",
+	})
+	if err := env.sp.Start(context.Background(), sessionName, runtime.Config{Command: "true"}); err != nil {
+		t.Fatalf("Start(%s): %v", sessionName, err)
+	}
+
+	dops := newFakeDrainOps()
+	if err := dops.setDrainAck(sessionName); err != nil {
+		t.Fatalf("setDrainAck(%s): %v", sessionName, err)
+	}
+
+	woken := reconcileSessionBeads(
+		context.Background(),
+		[]beads.Bead{session},
+		env.desiredState,
+		map[string]bool{"worker": true},
+		env.cfg,
+		env.sp,
+		env.store,
+		dops,
+		nil,
+		nil,
+		env.dt,
+		nil,
+		false,
+		nil,
+		"",
+		nil,
+		env.clk,
+		env.rec,
+		0,
+		0,
+		&env.stdout,
+		&env.stderr,
+	)
+	if woken != 0 {
+		t.Fatalf("woken = %d, want 0", woken)
+	}
+	if !env.sp.IsRunning(sessionName) {
+		t.Fatalf("always named session %q should remain running", sessionName)
+	}
+	got, err := env.store.Get(session.ID)
+	if err != nil {
+		t.Fatalf("Get(%s): %v", session.ID, err)
+	}
+	if got.Metadata["state"] == "drained" || got.Metadata["state"] == "asleep" {
+		t.Fatalf("state = %q, want running state after ignored drain-ack", got.Metadata["state"])
+	}
+	if acked, _ := dops.isDrainAcked(sessionName); acked {
+		t.Fatalf("drain-ack for always named session %q should be cleared", sessionName)
+	}
+}
+
 // --- buildDepsMap tests ---
 
 func TestBuildDepsMap_NilConfig(t *testing.T) {
@@ -1989,6 +2055,49 @@ func TestReconcileSessionBeads_HealsRunningPendingCreateToActive(t *testing.T) {
 	}
 	if got.Metadata["started_config_hash"] == "" {
 		t.Fatal("started_config_hash should be recorded when healing a live pending create")
+	}
+}
+
+func TestReconcileSessionBeads_HealsOwnedPendingCreateDespiteProcessAliveFalse(t *testing.T) {
+	env := newReconcilerTestEnv()
+	env.cfg = &config.City{
+		Agents: []config.Agent{{Name: "worker", StartCommand: "test-cmd", MaxActiveSessions: intPtr(1)}},
+	}
+	env.desiredState["worker"] = TemplateParams{
+		Command:      "test-cmd",
+		SessionName:  "worker",
+		TemplateName: "worker",
+		Hints:        agent.StartupHints{ProcessNames: []string{"test-cmd"}},
+	}
+
+	session := env.createSessionBead("worker", "worker")
+	env.markSessionCreating(&session)
+	env.setSessionMetadata(&session, map[string]string{
+		"pending_create_claim": "true",
+		"sleep_reason":         "",
+	})
+	if err := env.sp.Start(context.Background(), "worker", runtime.Config{Command: "test-cmd"}); err != nil {
+		t.Fatalf("start session: %v", err)
+	}
+	if err := env.sp.SetMeta("worker", "GC_SESSION_ID", session.ID); err != nil {
+		t.Fatalf("SetMeta(GC_SESSION_ID): %v", err)
+	}
+	env.sp.Zombies["worker"] = true
+
+	env.reconcile([]beads.Bead{session})
+
+	got, err := env.store.Get(session.ID)
+	if err != nil {
+		t.Fatalf("Get(%s): %v", session.ID, err)
+	}
+	if got.Metadata["pending_create_claim"] != "" {
+		t.Fatalf("pending_create_claim = %q, want cleared", got.Metadata["pending_create_claim"])
+	}
+	if got.Metadata["state"] != "active" {
+		t.Fatalf("state = %q, want active", got.Metadata["state"])
+	}
+	if got.Metadata["state_reason"] != "creation_complete" {
+		t.Fatalf("state_reason = %q, want creation_complete", got.Metadata["state_reason"])
 	}
 }
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -22,6 +23,9 @@ type managedDoltExistingReport struct {
 func assessExistingManagedDolt(cityPath, host, port, user string, timeout time.Duration) (managedDoltExistingReport, error) {
 	layout, err := resolveManagedDoltRuntimeLayout(cityPath)
 	if err != nil {
+		return managedDoltExistingReport{}, err
+	}
+	if err := ensureManagedDoltPersistedGlobals(cityPath); err != nil {
 		return managedDoltExistingReport{}, err
 	}
 	info, err := inspectManagedDoltProcess(cityPath, port)
@@ -46,6 +50,9 @@ func assessExistingManagedDolt(cityPath, host, port, user string, timeout time.D
 		report.DeletedInodes = true
 	}
 	if err == nil && report.Ready && !report.DeletedInodes {
+		if err := managedDoltApplySafeGlobalsFn(cityPath, host, strconv.Itoa(report.StatePort), user); err != nil {
+			return report, fmt.Errorf("apply managed dolt globals: %w", err)
+		}
 		report.Reusable = true
 	}
 	return report, nil

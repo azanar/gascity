@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -110,15 +109,15 @@ func collectCityStatusSnapshot(sp runtime.Provider, cfg *config.City, cityPath s
 			headerShown := false
 			for _, qualifiedInstance := range discoverPoolInstances(a.Name, a.Dir, sp0, &a, snapshot.CityName, cfg.Workspace.SessionTemplate, sp) {
 				sn := cliSessionName(cityPath, snapshot.CityName, qualifiedInstance, cfg.Workspace.SessionTemplate)
-				obs := observeSessionTargetWithWarning("gc status", cityPath, store, sp, cfg, sn, stderr)
+				running := sp != nil && sp.IsRunning(sn)
 				_, instanceName := config.ParseQualifiedName(qualifiedInstance)
 				row := cityStatusAgentRow{
 					Agent: StatusAgentJSON{
 						Name:          instanceName,
 						QualifiedName: qualifiedInstance,
 						Scope:         scope,
-						Running:       obs.Running,
-						Suspended:     suspended || obs.Suspended,
+						Running:       running,
+						Suspended:     suspended,
 						Pool:          nil,
 					},
 					SessionName: sn,
@@ -131,33 +130,33 @@ func collectCityStatusSnapshot(sp runtime.Provider, cfg *config.City, cityPath s
 				}
 				snapshot.Agents = append(snapshot.Agents, row)
 				snapshot.Summary.TotalAgents++
-				if obs.Running {
+				if running {
 					snapshot.Summary.RunningAgents++
 				}
-				addRigCount(a.Dir, suspended || obs.Suspended)
+				addRigCount(a.Dir, suspended)
 			}
 			continue
 		}
 
 		sn := cliSessionName(cityPath, snapshot.CityName, a.QualifiedName(), cfg.Workspace.SessionTemplate)
-		obs := observeSessionTargetWithWarning("gc status", cityPath, store, sp, cfg, sn, stderr)
+		running := sp != nil && sp.IsRunning(sn)
 		snapshot.Agents = append(snapshot.Agents, cityStatusAgentRow{
 			Agent: StatusAgentJSON{
 				Name:          a.Name,
 				QualifiedName: a.QualifiedName(),
 				Scope:         scope,
-				Running:       obs.Running,
-				Suspended:     suspended || obs.Suspended,
+				Running:       running,
+				Suspended:     suspended,
 			},
 			SessionName: sn,
 			GroupName:   a.QualifiedName(),
 			Expanded:    false,
 		})
 		snapshot.Summary.TotalAgents++
-		if obs.Running {
+		if running {
 			snapshot.Summary.RunningAgents++
 		}
-		addRigCount(a.Dir, suspended || obs.Suspended)
+		addRigCount(a.Dir, suspended)
 	}
 
 	for _, r := range cfg.Rigs {
@@ -177,7 +176,7 @@ func collectCityStatusSnapshot(sp runtime.Provider, cfg *config.City, cityPath s
 	for _, ns := range cfg.NamedSessions {
 		identity := ns.QualifiedName()
 		mode := ns.ModeOrDefault()
-		status := namedSessionStatusForCity(cityPath, cfg, store, snapshot.CityName, identity, mode, suspendedRigs)
+		status := namedSessionStatusForCity(cfg, sp, snapshot.CityName, identity, mode, suspendedRigs)
 		snapshot.NamedSessions = append(snapshot.NamedSessions, cityStatusNamedSession{
 			Identity: identity,
 			Status:   status,
@@ -189,9 +188,8 @@ func collectCityStatusSnapshot(sp runtime.Provider, cfg *config.City, cityPath s
 }
 
 func namedSessionStatusForCity(
-	cityPath string,
 	cfg *config.City,
-	store beads.Store,
+	sp runtime.Provider,
 	cityName string,
 	identity string,
 	mode string,
@@ -202,27 +200,11 @@ func namedSessionStatusForCity(
 		if mode == "always" && namedSessionBlockedBySuspension(cfg, spec.Agent, suspendedRigs) {
 			status = "degraded blocked"
 		}
-	}
-	if store == nil {
-		return status
-	}
-
-	id, err := resolveSessionIDWithConfig(cityPath, cfg, store, identity)
-	if err != nil {
-		if errors.Is(err, session.ErrSessionNotFound) {
-			return status
+		if sp != nil && strings.TrimSpace(spec.SessionName) != "" && sp.IsRunning(spec.SessionName) {
+			return "active"
 		}
-		return "lookup error: " + err.Error()
 	}
-
-	bead, err := store.Get(id)
-	if err != nil {
-		return "lookup error: " + err.Error()
-	}
-	if state := strings.TrimSpace(bead.Metadata["state"]); state != "" {
-		return state
-	}
-	return "materialized"
+	return status
 }
 
 func collectCitySessionCounts(cityPath string, store beads.Store, sp runtime.Provider, cfg *config.City) (StatusSummaryJSON, error) {
@@ -235,19 +217,18 @@ func collectCitySessionCounts(cityPath string, store beads.Store, sp runtime.Pro
 			return summary, nil
 		}
 	}
-	if store == nil {
-		return summary, nil
-	}
-	catalog, err := workerSessionCatalogWithConfig(cityPath, store, sp, cfg)
+	all, err := store.List(beads.ListQuery{
+		Label: session.LabelSession,
+		Sort:  beads.SortCreatedDesc,
+	})
 	if err != nil {
 		return summary, err
 	}
-	sessions, err := catalog.List("", "")
-	if err != nil {
-		return summary, err
-	}
-	for _, s := range sessions {
-		switch s.State {
+	for _, b := range all {
+		if !session.IsSessionBeadOrRepairable(b) || b.Status == "closed" {
+			continue
+		}
+		switch session.State(b.Metadata["state"]) {
 		case session.StateActive:
 			summary.ActiveSessions++
 		case session.StateSuspended:
