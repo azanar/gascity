@@ -52,6 +52,12 @@ live towns:
 - tmux cache and session-creation behavior in `internal/runtime/tmux`
 - `bd` timeout / stale-ID subprocess resilience in `internal/beads`
 
+For the higher-level real-city regression, use
+`make test-integration-city-stability`. That opt-in integration test boots a
+real tmux-backed city, soaks through the historical collapse window, runs
+`gc status`, and asserts the tmux server PID and canonical named-session set
+survive the soak.
+
 ### 2. Testscript (`.txtar` files in `cmd/gc/testdata/`)
 
 Test what the USER sees. Run the real `gc` binary, assert on stdout/stderr.
