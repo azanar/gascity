@@ -249,6 +249,7 @@ func TestStateCache_NoServerPreservesLastKnownGoodUntilStaleTTL(t *testing.T) {
 	}
 	cache := NewStateCache(f, 50*time.Millisecond)
 	cache.staleTTL = 200 * time.Millisecond
+	cache.noServerStaleTTL = 200 * time.Millisecond
 
 	if !cache.IsRunning("mayor") {
 		t.Fatal("expected mayor running initially")
@@ -274,6 +275,7 @@ func TestStateCache_NoServerRecoveryRefreshesToNewSessionSet(t *testing.T) {
 	}
 	cache := NewStateCache(f, 50*time.Millisecond)
 	cache.staleTTL = 200 * time.Millisecond
+	cache.noServerStaleTTL = 200 * time.Millisecond
 
 	if !cache.IsRunning("mayor") {
 		t.Fatal("expected mayor running initially")
@@ -294,6 +296,38 @@ func TestStateCache_NoServerRecoveryRefreshesToNewSessionSet(t *testing.T) {
 	}
 	if !cache.IsRunning("deacon") {
 		t.Fatal("expected deacon to appear after a successful recovery refresh")
+	}
+}
+
+func TestStateCache_NoServerUsesLongerGraceThanOrdinaryStaleTTL(t *testing.T) {
+	f := &mockFetcher{
+		sessions: map[string]bool{"mayor": true},
+	}
+	cache := NewStateCache(f, 50*time.Millisecond)
+	cache.staleTTL = 100 * time.Millisecond
+	cache.noServerStaleTTL = 400 * time.Millisecond
+
+	if !cache.IsRunning("mayor") {
+		t.Fatal("expected mayor running initially")
+	}
+
+	f.setResult(nil, ErrNoServer)
+	cache.Invalidate()
+
+	if !cache.IsRunning("mayor") {
+		t.Fatal("expected mayor to remain running during initial no-server failure")
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	if !cache.IsRunning("mayor") {
+		t.Fatal("expected no-server grace window to outlive ordinary staleTTL")
+	}
+
+	time.Sleep(250 * time.Millisecond)
+
+	if cache.IsRunning("mayor") {
+		t.Fatal("expected mayor to be reported stopped after no-server grace window expires")
 	}
 }
 

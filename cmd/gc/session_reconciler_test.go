@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +19,7 @@ import (
 	"github.com/gastownhall/gascity/internal/events"
 	"github.com/gastownhall/gascity/internal/fsys"
 	"github.com/gastownhall/gascity/internal/runtime"
+	sessionpkg "github.com/gastownhall/gascity/internal/session"
 )
 
 // fakeIdleTracker is a test double for idleTracker.
@@ -1663,6 +1666,67 @@ func TestReconcileSessionBeads_NoDriftBeforeStartedHashWritten(t *testing.T) {
 
 	if ds := env.dt.get(session.ID); ds != nil {
 		t.Errorf("expected no drain before started_config_hash is written, got reason=%q", ds.reason)
+	}
+}
+
+func TestSkillMaterializationUpgradeOnlyDrift(t *testing.T) {
+	current := runtime.Config{
+		Command: "codex -c model=gpt-5.4",
+		FingerprintExtra: map[string]string{
+			"pool.max":    "1",
+			"pool.min":    "0",
+			"skills:plan": "abc123",
+		},
+		PreStart: []string{`"${GC_BIN:-gc}" internal materialize-skills --agent mayor --workdir /city/.gc/agents/mayor`},
+	}
+	legacy := current
+	legacy.FingerprintExtra = map[string]string{
+		"pool.max": "1",
+		"pool.min": "0",
+	}
+	legacy.PreStart = nil
+
+	if !skillMaterializationUpgradeOnlyDrift(runtime.CoreFingerprintBreakdown(legacy), current) {
+		t.Fatal("expected legacy skill-materialization drift to be upgrade-only")
+	}
+
+	commandDrift := current
+	commandDrift.Command = "codex -c model=gpt-5.5"
+	if skillMaterializationUpgradeOnlyDrift(runtime.CoreFingerprintBreakdown(legacy), commandDrift) {
+		t.Fatal("command drift must not be treated as skill-materialization upgrade")
+	}
+}
+
+func TestUpgradeLegacyStartedConfigHashMetadata(t *testing.T) {
+	store := newTestStore()
+	session := makeBead("ga-mayor", map[string]string{
+		"started_config_hash": "legacy-hash",
+	})
+	current := runtime.Config{
+		Command: "codex -c model=gpt-5.4",
+		FingerprintExtra: map[string]string{
+			"pool.max":    "1",
+			"pool.min":    "0",
+			"skills:plan": "abc123",
+		},
+		PreStart: []string{`"${GC_BIN:-gc}" internal materialize-skills --agent mayor --workdir /city/.gc/agents/mayor`},
+	}
+
+	if err := upgradeLegacyStartedConfigHashMetadata(&session, store, current); err != nil {
+		t.Fatalf("expected metadata upgrade to succeed: %v", err)
+	}
+	if got := session.Metadata["started_config_hash_schema"]; got != sessionpkg.StartedConfigHashSchemaV1 {
+		t.Fatalf("started_config_hash_schema = %q, want %q", got, sessionpkg.StartedConfigHashSchemaV1)
+	}
+	if got := session.Metadata["started_config_hash"]; got != runtime.CoreFingerprint(current) {
+		t.Fatalf("started_config_hash = %q, want %q", got, runtime.CoreFingerprint(current))
+	}
+	var storedBreakdown map[string]string
+	if err := json.Unmarshal([]byte(session.Metadata["core_hash_breakdown"]), &storedBreakdown); err != nil {
+		t.Fatalf("unmarshal core_hash_breakdown: %v", err)
+	}
+	if !reflect.DeepEqual(storedBreakdown, runtime.CoreFingerprintBreakdown(current)) {
+		t.Fatalf("core_hash_breakdown mismatch: got=%v want=%v", storedBreakdown, runtime.CoreFingerprintBreakdown(current))
 	}
 }
 

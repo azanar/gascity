@@ -180,13 +180,21 @@ type CommitStartedPatchInput struct {
 	Now                     time.Time
 }
 
+// StartedConfigHashSchemaV1 marks sessions whose stored started_config_hash
+// and core_hash_breakdown were computed after skill-materialization
+// fingerprinting became part of the runtime config. Legacy sessions lacking
+// this marker may need a one-time in-place metadata upgrade instead of a
+// destructive config-drift restart.
+const StartedConfigHashSchemaV1 = "skills-materialize-v1"
+
 // CommitStartedPatch records a successful runtime start atomically with the
 // configuration hashes that future drift checks use.
 func CommitStartedPatch(input CommitStartedPatchInput) MetadataPatch {
 	patch := MetadataPatch{
-		"started_config_hash": input.CoreHash,
-		"live_hash":           input.LiveHash,
-		"started_live_hash":   input.LiveHash,
+		"started_config_hash":         input.CoreHash,
+		"live_hash":                   input.LiveHash,
+		"started_live_hash":           input.LiveHash,
+		"started_config_hash_schema": StartedConfigHashSchemaV1,
 	}
 	if input.CoreBreakdown != "" {
 		patch["core_hash_breakdown"] = input.CoreBreakdown

@@ -672,6 +672,15 @@ func reconcileSessionBeadsTraced(
 							_ = json.Unmarshal([]byte(raw), &storedBreakdown)
 						}
 						runtime.LogCoreFingerprintDrift(stderr, name, storedBreakdown, agentCfg)
+						if session.Metadata["started_config_hash_schema"] != sessionpkg.StartedConfigHashSchemaV1 &&
+							skillMaterializationUpgradeOnlyDrift(storedBreakdown, agentCfg) {
+							if err := upgradeLegacyStartedConfigHashMetadata(session, store, agentCfg); err != nil {
+								fmt.Fprintf(stderr, "config-drift %s: failed legacy started_config_hash upgrade: %v\n", name, err) //nolint:errcheck
+							} else {
+								fmt.Fprintf(stderr, "config-drift %s: upgraded legacy started_config_hash metadata in place\n", name) //nolint:errcheck
+							}
+							continue
+						}
 						if isNamedSessionBead(*session) {
 							// Defer config-drift restart for named sessions
 							// that are actively in use (pending interaction,
@@ -1187,6 +1196,89 @@ const (
 	namedSessionConfigDriftDeferredAtMetadata          = "config_drift_deferred_at"
 	namedSessionConfigDriftDeferredKeyMetadata         = "config_drift_deferred_key"
 )
+
+func skillMaterializationUpgradeOnlyDrift(storedBreakdown map[string]string, current runtime.Config) bool {
+	currentBreakdown := runtime.CoreFingerprintBreakdown(current)
+	diffs := make(map[string]struct{})
+	if len(storedBreakdown) == 0 {
+		diffs["PreStart"] = struct{}{}
+		diffs["FPExtra"] = struct{}{}
+	} else {
+		for field, currentHash := range currentBreakdown {
+			if storedBreakdown[field] != currentHash {
+				diffs[field] = struct{}{}
+			}
+		}
+	}
+	if len(diffs) == 0 {
+		for field, currentHash := range currentBreakdown {
+			if storedBreakdown[field] != currentHash {
+				diffs[field] = struct{}{}
+			}
+		}
+	}
+	for field := range diffs {
+		if field != "PreStart" && field != "FPExtra" {
+			return false
+		}
+	}
+	hasMaterializePreStart := false
+	for _, cmd := range current.PreStart {
+		if strings.Contains(cmd, "internal materialize-skills") {
+			hasMaterializePreStart = true
+			break
+		}
+	}
+	if !hasMaterializePreStart {
+		return false
+	}
+	hasSkillKey := false
+	for key := range current.FingerprintExtra {
+		if strings.HasPrefix(key, "skills:") {
+			hasSkillKey = true
+			break
+		}
+	}
+	if !hasSkillKey {
+		return false
+	}
+	return true
+}
+
+func upgradeLegacyStartedConfigHashMetadata(
+	session *beads.Bead,
+	store beads.Store,
+	current runtime.Config,
+) error {
+	if session == nil || store == nil {
+		return fmt.Errorf("missing session/store")
+	}
+	coreBreakdown := runtime.CoreFingerprintBreakdown(current)
+	coreBreakdownJSON, err := json.Marshal(coreBreakdown)
+	if err != nil {
+		return err
+	}
+	metadata := map[string]string{
+		"started_config_hash":         runtime.CoreFingerprint(current),
+		"core_hash_breakdown":         string(coreBreakdownJSON),
+		"started_config_hash_schema": sessionpkg.StartedConfigHashSchemaV1,
+	}
+	liveHash := runtime.LiveFingerprint(current)
+	if liveHash != "" {
+		metadata["live_hash"] = liveHash
+		metadata["started_live_hash"] = liveHash
+	}
+	if err := store.SetMetadataBatch(session.ID, metadata); err != nil {
+		return err
+	}
+	if session.Metadata == nil {
+		session.Metadata = make(map[string]string, len(metadata))
+	}
+	for key, value := range metadata {
+		session.Metadata[key] = value
+	}
+	return nil
+}
 
 // namedSessionActivelyInUse returns true if a named session is currently
 // in active use and should not be immediately drained for config-drift.

@@ -22,6 +22,12 @@ const defaultCacheTTL = 2 * time.Second
 // sessions and logs a degraded warning.
 const defaultStaleTTL = 30 * time.Second
 
+// defaultNoServerStaleTTL is a longer grace window used when tmux reports
+// ErrNoServer. In live cities we've seen probe failures that looked like
+// "no server running" even while the underlying server and panes recovered
+// without needing destructive session churn.
+const defaultNoServerStaleTTL = 5 * time.Minute
+
 // fetchTimeout is the hard timeout for a single FetchRunning call.
 const fetchTimeout = 3 * time.Second
 
@@ -44,6 +50,7 @@ type StateCache struct {
 	dirty     bool // set by Invalidate(); cleared on successful refresh
 	ttl       time.Duration
 	staleTTL  time.Duration
+	noServerStaleTTL time.Duration
 	sf        singleflight.Group
 	fetcher   StateFetcher
 }
@@ -55,6 +62,7 @@ func NewStateCache(fetcher StateFetcher, ttl time.Duration) *StateCache {
 		fetcher:  fetcher,
 		ttl:      ttl,
 		staleTTL: defaultStaleTTL,
+		noServerStaleTTL: defaultNoServerStaleTTL,
 	}
 }
 
@@ -85,12 +93,17 @@ func (c *StateCache) IsRunning(name string) bool {
 	c.mu.RLock()
 	sessions = c.sessions
 	fetchedAt = c.fetchedAt
+	lastError := c.lastError
 	c.mu.RUnlock()
 
 	// If the cache is older than staleTTL, report all sessions as not running.
 	// Note: fetchedAt is preserved on failure (never zeroed), so this only
 	// triggers after staleTTL of real wall-clock time since last success.
-	if sessions == nil || fetchedAt.IsZero() || time.Since(fetchedAt) > c.staleTTL {
+	staleTTL := c.staleTTL
+	if isNoServerError(lastError) && c.noServerStaleTTL > staleTTL {
+		staleTTL = c.noServerStaleTTL
+	}
+	if sessions == nil || fetchedAt.IsZero() || time.Since(fetchedAt) > staleTTL {
 		return false
 	}
 	return sessions[name]
