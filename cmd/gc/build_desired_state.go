@@ -237,6 +237,20 @@ func buildDesiredStateWithSessionBeads(
 	// scale_check runs in parallel for all pool agents — the authoritative
 	// demand signal for new sessions. Computed once, returned in result.
 	scaleCheckCounts := evaluatePendingPoolsMap(cfg, pendingPools, stderr, trace)
+	adjustedScaleCheckCounts := cloneIntMap(scaleCheckCounts)
+
+	namedSpecs := make(map[string]namedSessionSpec)
+	for i := range cfg.NamedSessions {
+		identity := cfg.NamedSessions[i].QualifiedName()
+		spec, ok := findNamedSessionSpec(cfg, cityName, identity)
+		if !ok {
+			continue
+		}
+		if spec.Agent.Suspended || agentInSuspendedRig(cityPath, spec.Agent, cfg.Rigs, suspendedRigPaths) {
+			continue
+		}
+		namedSpecs[identity] = spec
+	}
 
 	// Collect work beads with assignees — used for both pool demand and
 	// named session on_demand wake. Hoisted out of the store block so
@@ -257,7 +271,26 @@ func buildDesiredStateWithSessionBeads(
 		} else {
 			fmt.Fprintf(stderr, "assignedWorkBeads: 0 beads (rigStores=%d)\n", len(rigStores)) //nolint:errcheck
 		}
-		poolDesiredStates := ComputePoolDesiredStatesTraced(cfg, assignedWorkBeads, sessionBeads.Open(), scaleCheckCounts, trace)
+	}
+
+	namedScaleDemand := make(map[string]bool, len(namedSpecs))
+	for identity, spec := range namedSpecs {
+		if spec.Mode != "on_demand" {
+			continue
+		}
+		template := spec.Agent.QualifiedName()
+		if adjustedScaleCheckCounts[template] <= 0 {
+			continue
+		}
+		// Consume one unit of generic scale demand into the canonical
+		// on-demand named identity before the generic pool pipeline sees it.
+		namedScaleDemand[identity] = true
+		adjustedScaleCheckCounts[template]--
+		fmt.Fprintf(stderr, "namedWorkReady: %s consumed scale_check demand for template %s (remaining=%d)\n", identity, template, adjustedScaleCheckCounts[template]) //nolint:errcheck
+	}
+
+	if store != nil {
+		poolDesiredStates := ComputePoolDesiredStatesTraced(cfg, assignedWorkBeads, sessionBeads.Open(), adjustedScaleCheckCounts, trace)
 		for _, poolState := range poolDesiredStates {
 			cfgAgent := findAgentByTemplate(cfg, poolState.Template)
 			if cfgAgent == nil {
@@ -272,7 +305,7 @@ func buildDesiredStateWithSessionBeads(
 	} else {
 		// No store — use scale_check counts directly.
 		for _, pw := range pendingPools {
-			desiredCount := scaleCheckCounts[cfg.Agents[pw.agentIdx].QualifiedName()]
+			desiredCount := adjustedScaleCheckCounts[cfg.Agents[pw.agentIdx].QualifiedName()]
 			for slot := 1; slot <= desiredCount; slot++ {
 				name := cfg.Agents[pw.agentIdx].Name
 				if cfg.Agents[pw.agentIdx].SupportsInstanceExpansion() {
@@ -298,19 +331,10 @@ func buildDesiredStateWithSessionBeads(
 	// entries. "always" mode sessions are unconditionally materialized; "on_demand"
 	// sessions are materialized only when they already have a canonical bead or
 	// when their work query returns ready work.
-	namedSpecs := make(map[string]namedSessionSpec)
-	for i := range cfg.NamedSessions {
-		identity := cfg.NamedSessions[i].QualifiedName()
-		spec, ok := findNamedSessionSpec(cfg, cityName, identity)
-		if !ok {
-			continue
-		}
-		if spec.Agent.Suspended || agentInSuspendedRig(cityPath, spec.Agent, cfg.Rigs, suspendedRigPaths) {
-			continue
-		}
-		namedSpecs[identity] = spec
-	}
 	namedWorkReady := make(map[string]bool, len(namedSpecs))
+	for identity := range namedScaleDemand {
+		namedWorkReady[identity] = true
+	}
 	// Check assigned work beads: if any work bead's Assignee matches a named
 	// session's identity, that session has direct demand.
 	//
@@ -412,13 +436,24 @@ func buildDesiredStateWithSessionBeads(
 	return DesiredStateResult{
 		State:              desired,
 		BaseState:          baseDesired,
-		ScaleCheckCounts:   scaleCheckCounts,
+		ScaleCheckCounts:   adjustedScaleCheckCounts,
 		AssignedWorkBeads:  assignedWorkBeads,
 		AssignedWorkStores: assignedWorkStores,
 		NamedSessionDemand: namedWorkReady,
 		StoreQueryPartial:  storePartial,
 		BeaconTime:         beaconTime,
 	}
+}
+
+func cloneIntMap(src map[string]int) map[string]int {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(map[string]int, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
 }
 
 func buildSuspendedRigPaths(cfg *config.City) map[string]bool {

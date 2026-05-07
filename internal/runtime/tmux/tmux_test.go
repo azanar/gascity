@@ -1808,6 +1808,14 @@ func TestNewSessionWithCommandAndEnv(t *testing.T) {
 	if gotRig != "testrig" {
 		t.Errorf("GT_RIG = %q, want %q", gotRig, "testrig")
 	}
+
+	remainOnExit, err := tm.run("show-options", "-v", "-t", sessionName, "remain-on-exit")
+	if err != nil {
+		t.Fatalf("show-options remain-on-exit: %v", err)
+	}
+	if remainOnExit != "on" {
+		t.Errorf("remain-on-exit = %q, want %q", remainOnExit, "on")
+	}
 }
 
 func TestSetGetRemoveEnvironment(t *testing.T) {
@@ -1878,6 +1886,14 @@ func TestNewSessionWithCommandAndEnvEmpty(t *testing.T) {
 	}
 	if !has {
 		t.Fatal("expected session to exist after creation with empty env")
+	}
+
+	remainOnExit, err := tm.run("show-options", "-v", "-t", sessionName, "remain-on-exit")
+	if err != nil {
+		t.Fatalf("show-options remain-on-exit: %v", err)
+	}
+	if remainOnExit != "on" {
+		t.Errorf("remain-on-exit = %q, want %q", remainOnExit, "on")
 	}
 }
 

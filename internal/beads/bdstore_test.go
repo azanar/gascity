@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -1596,6 +1599,43 @@ func TestExecCommandRunnerWithEnvOverridesInheritedValues(t *testing.T) {
 	if _, err := os.Stat(dir); err != nil {
 		t.Fatalf("runner should preserve working dir usability: %v", err)
 	}
+}
+
+func TestExecCommandRunnerTimeoutKillsProcessGroup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("process-group signaling is unix-specific")
+	}
+
+	t.Setenv("GC_BD_TIMEOUT_MS", "200")
+
+	dir := t.TempDir()
+	childFile := filepath.Join(dir, "child.pid")
+	runner := beads.ExecCommandRunner()
+
+	_, err := runner(dir, "sh", "-c", fmt.Sprintf(`sleep 10 & child=$!; echo "$child" > %s; wait "$child"`, shellQuoteForTest(childFile)))
+	if err == nil || !strings.Contains(err.Error(), "timed out after") {
+		t.Fatalf("runner err = %v, want timeout", err)
+	}
+
+	data, readErr := os.ReadFile(childFile)
+	if readErr != nil {
+		t.Fatalf("reading child pid: %v", readErr)
+	}
+	childPID, convErr := strconv.Atoi(strings.TrimSpace(string(data)))
+	if convErr != nil {
+		t.Fatalf("parsing child pid %q: %v", string(data), convErr)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	if killErr := syscall.Kill(childPID, 0); killErr == nil {
+		t.Fatalf("child pid %d still alive after timeout cleanup", childPID)
+	} else if !errors.Is(killErr, syscall.ESRCH) {
+		t.Fatalf("probing child pid %d: %v", childPID, killErr)
+	}
+}
+
+func shellQuoteForTest(path string) string {
+	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
 }
 
 func TestBdStoreApplyGraphPlan(t *testing.T) {

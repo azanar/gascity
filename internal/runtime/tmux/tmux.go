@@ -270,11 +270,7 @@ func (t *Tmux) NewSession(name, workDir string) error {
 	if err != nil {
 		return err
 	}
-	// tmux 3.3+ sets window-size=manual on detached sessions, locking them
-	// at 80x24 even after a client attaches. Reset to "latest" so the window
-	// adapts to the largest attached client.
-	t.run("set-option", "-wt", name, "window-size", "latest") //nolint:errcheck // best-effort
-	t.installTracePaneDiedHook(name)                           //nolint:errcheck // debug-only best-effort
+	t.postCreateSessionOptions(name)
 	return nil
 }
 
@@ -297,9 +293,7 @@ func (t *Tmux) NewSessionWithCommand(name, workDir, command string) error {
 	if err != nil {
 		return err
 	}
-	// tmux 3.3+: reset window-size from manual to latest (see NewSession).
-	t.run("set-option", "-wt", name, "window-size", "latest") //nolint:errcheck // best-effort
-	t.installTracePaneDiedHook(name)                           //nolint:errcheck // debug-only best-effort
+	t.postCreateSessionOptions(name)
 	return nil
 }
 
@@ -365,10 +359,19 @@ func (t *Tmux) NewSessionWithCommandAndEnv(name, workDir, command string, env ma
 	if err != nil {
 		return err
 	}
-	// tmux 3.3+: reset window-size from manual to latest (see NewSession).
-	t.run("set-option", "-wt", name, "window-size", "latest") //nolint:errcheck // best-effort
-	t.installTracePaneDiedHook(name)                           //nolint:errcheck // debug-only best-effort
+	t.postCreateSessionOptions(name)
 	return nil
+}
+
+func (t *Tmux) postCreateSessionOptions(name string) {
+	// tmux 3.3+ sets window-size=manual on detached sessions, locking them
+	// at 80x24 even after a client attaches. Reset to "latest" so the window
+	// adapts to the largest attached client.
+	t.run("set-option", "-wt", name, "window-size", "latest") //nolint:errcheck // best-effort
+	// Keep sessions visible if their pane exits so the server does not vanish
+	// when every pane dies at once and the reconciler can inspect dead panes.
+	t.run("set-option", "-t", name, "remain-on-exit", "on") //nolint:errcheck // best-effort
+	t.installTracePaneDiedHook(name)                         //nolint:errcheck // debug-only best-effort
 }
 
 func (t *Tmux) installTracePaneDiedHook(session string) error {

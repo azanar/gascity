@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gastownhall/gascity/internal/telemetry"
@@ -55,24 +56,43 @@ func ExecCommandRunnerWithEnv(env map[string]string) CommandRunner {
 				time.Now().UTC().Format(time.RFC3339Nano), status, time.Since(start), dir, name, args, msg)
 		}
 		trace("start", nil)
-		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		timeout := bdCommandTimeout()
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, name, args...)
 		cmd.WaitDelay = 2 * time.Second
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		cmd.Dir = dir
 		if len(env) > 0 {
 			cmd.Env = mergeEnv(os.Environ(), env)
 		}
+		var stdout bytes.Buffer
 		var stderr bytes.Buffer
+		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
-		out, err := cmd.Output()
+		if err := cmd.Start(); err != nil {
+			trace("error", err)
+			return nil, err
+		}
+		waitCh := make(chan error, 1)
+		go func() {
+			waitCh <- cmd.Wait()
+		}()
+		var err error
+		select {
+		case err = <-waitCh:
+		case <-ctx.Done():
+			killProcessGroup(cmd.Process)
+			err = <-waitCh
+		}
+		out := stdout.Bytes()
 		if name == "bd" {
 			telemetry.RecordBDCall(context.Background(),
 				args, float64(time.Since(start).Milliseconds()),
 				err, out, stderr.String())
 		}
 		if ctx.Err() == context.DeadlineExceeded {
-			timeoutErr := fmt.Errorf("timed out after 120s")
+			timeoutErr := fmt.Errorf("timed out after %s", timeout)
 			trace("timeout", timeoutErr)
 			if stderr.Len() > 0 {
 				return out, fmt.Errorf("%w: %s", timeoutErr, stderr.String())
@@ -86,6 +106,22 @@ func ExecCommandRunnerWithEnv(env map[string]string) CommandRunner {
 		trace("done", err)
 		return out, err
 	}
+}
+
+func bdCommandTimeout() time.Duration {
+	if raw := strings.TrimSpace(os.Getenv("GC_BD_TIMEOUT_MS")); raw != "" {
+		if ms, err := strconv.Atoi(raw); err == nil && ms > 0 {
+			return time.Duration(ms) * time.Millisecond
+		}
+	}
+	return 120 * time.Second
+}
+
+func killProcessGroup(proc *os.Process) {
+	if proc == nil {
+		return
+	}
+	_ = syscall.Kill(-proc.Pid, syscall.SIGKILL)
 }
 
 // PurgeRunnerFunc executes a bd purge command with custom dir and env.

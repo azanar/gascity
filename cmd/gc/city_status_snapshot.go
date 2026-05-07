@@ -42,6 +42,10 @@ type rigStatusCounts struct {
 	Suspended int
 }
 
+type sessionNamesProvider interface {
+	SessionNames() []string
+}
+
 func openCityStatusStore(cityPath string, stderr io.Writer) (beads.Store, int) {
 	if cityPath == "" {
 		return nil, 0
@@ -68,6 +72,8 @@ func collectCityStatusSnapshot(sp runtime.Provider, cfg *config.City, cityPath s
 	if cfg == nil {
 		return snapshot
 	}
+
+	runningSet := providerRunningSet(sp)
 
 	suspendedRigs := make(map[string]bool, len(cfg.Rigs))
 	for _, r := range cfg.Rigs {
@@ -109,7 +115,7 @@ func collectCityStatusSnapshot(sp runtime.Provider, cfg *config.City, cityPath s
 			headerShown := false
 			for _, qualifiedInstance := range discoverPoolInstances(a.Name, a.Dir, sp0, &a, snapshot.CityName, cfg.Workspace.SessionTemplate, sp) {
 				sn := cliSessionName(cityPath, snapshot.CityName, qualifiedInstance, cfg.Workspace.SessionTemplate)
-				running := sp != nil && sp.IsRunning(sn)
+				running := providerSessionRunning(sp, runningSet, sn)
 				_, instanceName := config.ParseQualifiedName(qualifiedInstance)
 				row := cityStatusAgentRow{
 					Agent: StatusAgentJSON{
@@ -139,7 +145,7 @@ func collectCityStatusSnapshot(sp runtime.Provider, cfg *config.City, cityPath s
 		}
 
 		sn := cliSessionName(cityPath, snapshot.CityName, a.QualifiedName(), cfg.Workspace.SessionTemplate)
-		running := sp != nil && sp.IsRunning(sn)
+		running := providerSessionRunning(sp, runningSet, sn)
 		snapshot.Agents = append(snapshot.Agents, cityStatusAgentRow{
 			Agent: StatusAgentJSON{
 				Name:          a.Name,
@@ -176,7 +182,7 @@ func collectCityStatusSnapshot(sp runtime.Provider, cfg *config.City, cityPath s
 	for _, ns := range cfg.NamedSessions {
 		identity := ns.QualifiedName()
 		mode := ns.ModeOrDefault()
-		status := namedSessionStatusForCity(cfg, sp, snapshot.CityName, identity, mode, suspendedRigs)
+		status := namedSessionStatusForCity(cfg, sp, runningSet, snapshot.CityName, identity, mode, suspendedRigs)
 		snapshot.NamedSessions = append(snapshot.NamedSessions, cityStatusNamedSession{
 			Identity: identity,
 			Status:   status,
@@ -190,6 +196,7 @@ func collectCityStatusSnapshot(sp runtime.Provider, cfg *config.City, cityPath s
 func namedSessionStatusForCity(
 	cfg *config.City,
 	sp runtime.Provider,
+	runningSet map[string]bool,
 	cityName string,
 	identity string,
 	mode string,
@@ -200,11 +207,43 @@ func namedSessionStatusForCity(
 		if mode == "always" && namedSessionBlockedBySuspension(cfg, spec.Agent, suspendedRigs) {
 			status = "degraded blocked"
 		}
-		if sp != nil && strings.TrimSpace(spec.SessionName) != "" && sp.IsRunning(spec.SessionName) {
+		if strings.TrimSpace(spec.SessionName) != "" && providerSessionRunning(sp, runningSet, spec.SessionName) {
 			return "active"
 		}
 	}
 	return status
+}
+
+func providerRunningSet(sp runtime.Provider) map[string]bool {
+	if sp == nil {
+		return nil
+	}
+	snp, ok := sp.(sessionNamesProvider)
+	if !ok {
+		return nil
+	}
+	names := snp.SessionNames()
+	if len(names) == 0 {
+		return map[string]bool{}
+	}
+	running := make(map[string]bool, len(names))
+	for _, name := range names {
+		if strings.TrimSpace(name) == "" {
+			continue
+		}
+		running[name] = true
+	}
+	return running
+}
+
+func providerSessionRunning(sp runtime.Provider, runningSet map[string]bool, sessionName string) bool {
+	if strings.TrimSpace(sessionName) == "" {
+		return false
+	}
+	if runningSet != nil {
+		return runningSet[sessionName]
+	}
+	return sp != nil && sp.IsRunning(sessionName)
 }
 
 func collectCitySessionCounts(cityPath string, store beads.Store, sp runtime.Provider, cfg *config.City) (StatusSummaryJSON, error) {

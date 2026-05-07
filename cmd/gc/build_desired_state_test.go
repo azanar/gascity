@@ -882,8 +882,8 @@ func TestBuildDesiredState_PlainTemplateMaxOneScaleCheckCreatesEphemeralDemand(t
 }
 
 func TestBuildDesiredState_OnDemandNamedSession_ScaleCheckCreatesEphemeralDemandOnly(t *testing.T) {
-	// Phase 1 treats scale_check as generic ephemeral demand only. It must not
-	// materialize on-demand named identities without direct named continuity.
+	// Scale-check demand should first wake/materialize the canonical on-demand
+	// named identity, then leave only the remainder as generic ephemeral demand.
 	cityPath := t.TempDir()
 	store := beads.NewMemStore()
 	cfg := &config.City{
@@ -903,23 +903,28 @@ func TestBuildDesiredState_OnDemandNamedSession_ScaleCheckCreatesEphemeralDemand
 	}
 
 	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
-	dogCount := 0
+	dogEphemeralCount := 0
+	namedCount := 0
 	for _, tp := range dsResult.State {
 		if tp.TemplateName == "dog" {
-			dogCount++
 			if tp.ConfiguredNamedIdentity != "" {
-				t.Fatalf("scale_check materialized configured named identity: %+v", tp)
+				namedCount++
+				continue
 			}
-			if tp.ConfiguredNamedMode != "" {
-				t.Fatalf("scale_check materialized configured named mode: %+v", tp)
-			}
+			dogEphemeralCount++
 		}
 	}
-	if dogCount != 2 {
-		t.Fatalf("dog ephemeral desired count = %d, want 2", dogCount)
+	if namedCount != 1 {
+		t.Fatalf("named dog count = %d, want 1", namedCount)
 	}
-	if dsResult.NamedSessionDemand["dog"] {
-		t.Fatal("NamedSessionDemand should not include 'dog' from scale_check alone")
+	if dogEphemeralCount != 1 {
+		t.Fatalf("dog ephemeral desired count = %d, want 1", dogEphemeralCount)
+	}
+	if !dsResult.NamedSessionDemand["dog"] {
+		t.Fatal("NamedSessionDemand should include 'dog' when scale_check demand is consumed by the canonical named session")
+	}
+	if dsResult.ScaleCheckCounts["dog"] != 1 {
+		t.Fatalf("ScaleCheckCounts[dog] = %d, want 1 after canonical named demand is consumed", dsResult.ScaleCheckCounts["dog"])
 	}
 }
 
@@ -986,8 +991,8 @@ func TestBuildDesiredState_OnDemandNamedSession_NoExplicitScaleCheckUsesWorkQuer
 }
 
 func TestBuildDesiredState_OnDemandNamedSession_ScaleCheckCreatesEphemeralSessions(t *testing.T) {
-	// A named-session agent with scale_check should create generic ephemeral
-	// capacity only, not the configured named session.
+	// Scale-check demand should first wake/materialize the canonical on-demand
+	// named session, then spill any remainder into generic ephemeral capacity.
 	cityPath := t.TempDir()
 	store := beads.NewMemStore()
 	cfg := &config.City{
@@ -1007,17 +1012,77 @@ func TestBuildDesiredState_OnDemandNamedSession_ScaleCheckCreatesEphemeralSessio
 	}
 
 	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
-	dogCount := 0
+	dogEphemeralCount := 0
+	namedCount := 0
 	for _, tp := range dsResult.State {
 		if tp.TemplateName == "dog" {
-			dogCount++
 			if tp.ConfiguredNamedIdentity != "" {
-				t.Fatalf("scale_check materialized configured named identity: %+v", tp)
+				namedCount++
+				if tp.ConfiguredNamedIdentity != "dog" {
+					t.Fatalf("ConfiguredNamedIdentity = %q, want dog", tp.ConfiguredNamedIdentity)
+				}
+				continue
 			}
+			dogEphemeralCount++
 		}
 	}
-	if dogCount != 3 {
-		t.Fatalf("expected 3 ephemeral sessions for dog from scale_check, got %d", dogCount)
+	if namedCount != 1 {
+		t.Fatalf("named dog count = %d, want 1", namedCount)
+	}
+	if dogEphemeralCount != 2 {
+		t.Fatalf("expected 2 ephemeral sessions for dog from scale_check remainder, got %d", dogEphemeralCount)
+	}
+	if dsResult.ScaleCheckCounts["dog"] != 2 {
+		t.Fatalf("ScaleCheckCounts[dog] = %d, want 2 after canonical named demand is consumed", dsResult.ScaleCheckCounts["dog"])
+	}
+	if !dsResult.NamedSessionDemand["dog"] {
+		t.Fatal("NamedSessionDemand should include dog when scale_check demand is consumed by the canonical named session")
+	}
+}
+
+func TestBuildDesiredState_OnDemandNamedSession_ScaleCheckOneUsesCanonicalNamedSession(t *testing.T) {
+	cityPath := t.TempDir()
+	store := beads.NewMemStore()
+	cfg := &config.City{
+		Workspace: config.Workspace{Name: "test-city"},
+		Agents: []config.Agent{{
+			Name:              "dog",
+			StartCommand:      "true",
+			MinActiveSessions: intPtr(0),
+			MaxActiveSessions: intPtr(3),
+			ScaleCheck:        "echo 1",
+			WorkQuery:         "printf ''",
+		}},
+		NamedSessions: []config.NamedSession{{
+			Template: "dog",
+			Mode:     "on_demand",
+		}},
+	}
+
+	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dogEphemeralCount := 0
+	namedCount := 0
+	for _, tp := range dsResult.State {
+		if tp.TemplateName != "dog" {
+			continue
+		}
+		if tp.ConfiguredNamedIdentity != "" {
+			namedCount++
+			continue
+		}
+		dogEphemeralCount++
+	}
+	if namedCount != 1 {
+		t.Fatalf("named dog count = %d, want 1", namedCount)
+	}
+	if dogEphemeralCount != 0 {
+		t.Fatalf("dog ephemeral count = %d, want 0", dogEphemeralCount)
+	}
+	if dsResult.ScaleCheckCounts["dog"] != 0 {
+		t.Fatalf("ScaleCheckCounts[dog] = %d, want 0 after canonical named demand is consumed", dsResult.ScaleCheckCounts["dog"])
+	}
+	if !dsResult.NamedSessionDemand["dog"] {
+		t.Fatal("NamedSessionDemand should include dog when scale_check=1 is consumed by the canonical named session")
 	}
 }
 
