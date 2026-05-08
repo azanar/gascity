@@ -19,6 +19,7 @@ type mockFetcher struct {
 	sessions map[string]bool
 	err      error
 	delay    time.Duration
+	alive    bool
 }
 
 func (m *mockFetcher) FetchRunning(ctx context.Context) (map[string]bool, error) {
@@ -50,6 +51,18 @@ func (m *mockFetcher) setResult(sessions map[string]bool, err error) {
 	defer m.mu.Unlock()
 	m.sessions = sessions
 	m.err = err
+}
+
+func (m *mockFetcher) ServerLikelyAlive() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.alive
+}
+
+func (m *mockFetcher) setAlive(alive bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.alive = alive
 }
 
 func TestStateCache_FreshCacheReturnsCorrectState(t *testing.T) {
@@ -328,6 +341,29 @@ func TestStateCache_NoServerUsesLongerGraceThanOrdinaryStaleTTL(t *testing.T) {
 
 	if cache.IsRunning("mayor") {
 		t.Fatal("expected mayor to be reported stopped after no-server grace window expires")
+	}
+}
+
+func TestStateCache_NoServerWhileServerLikelyAlivePreservesLastKnownGoodBeyondGrace(t *testing.T) {
+	f := &mockFetcher{
+		sessions: map[string]bool{"mayor": true},
+		alive:    true,
+	}
+	cache := NewStateCache(f, 50*time.Millisecond)
+	cache.staleTTL = 100 * time.Millisecond
+	cache.noServerStaleTTL = 200 * time.Millisecond
+
+	if !cache.IsRunning("mayor") {
+		t.Fatal("expected mayor running initially")
+	}
+
+	f.setResult(nil, ErrNoServer)
+	cache.Invalidate()
+
+	time.Sleep(300 * time.Millisecond)
+
+	if !cache.IsRunning("mayor") {
+		t.Fatal("expected mayor to remain running while cached tmux server is still likely alive")
 	}
 }
 

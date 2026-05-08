@@ -1913,6 +1913,60 @@ func TestNewSessionWithCommandAndEnvEmpty(t *testing.T) {
 	}
 }
 
+func TestNewSessionWithCommandAndEnvNamedPersistentInstallsAutoRespawnHook(t *testing.T) {
+	if !hasTmux() {
+		t.Skip("tmux not installed")
+	}
+
+	tm := testTmux()
+	sessionName := "gt-test-named-hook-" + t.Name()
+	_ = tm.KillSession(sessionName)
+
+	env := map[string]string{
+		"GC_SESSION_ORIGIN": "named",
+		"GC_TEMPLATE":       "mayor",
+	}
+	if err := tm.NewSessionWithCommandAndEnv(sessionName, "", "sleep 5", env); err != nil {
+		t.Fatalf("NewSessionWithCommandAndEnv: %v", err)
+	}
+	defer func() { _ = tm.KillSession(sessionName) }()
+
+	hook, err := tm.run("show-hooks", "-t", sessionName)
+	if err != nil {
+		t.Fatalf("show-hooks: %v", err)
+	}
+	if !strings.Contains(hook, "respawn-pane -k") {
+		t.Fatalf("show-hooks missing auto-respawn hook:\n%s", hook)
+	}
+}
+
+func TestNewSessionWithCommandAndEnvNamedRefinerySkipsAutoRespawnHook(t *testing.T) {
+	if !hasTmux() {
+		t.Skip("tmux not installed")
+	}
+
+	tm := testTmux()
+	sessionName := "gt-test-refinery-hook-" + t.Name()
+	_ = tm.KillSession(sessionName)
+
+	env := map[string]string{
+		"GC_SESSION_ORIGIN": "named",
+		"GC_TEMPLATE":       "sazabi/refinery",
+	}
+	if err := tm.NewSessionWithCommandAndEnv(sessionName, "", "sleep 5", env); err != nil {
+		t.Fatalf("NewSessionWithCommandAndEnv: %v", err)
+	}
+	defer func() { _ = tm.KillSession(sessionName) }()
+
+	hook, err := tm.run("show-hooks", "-t", sessionName)
+	if err != nil {
+		t.Fatalf("show-hooks: %v", err)
+	}
+	if strings.Contains(hook, "respawn-pane -k") {
+		t.Fatalf("show-hooks unexpectedly contains auto-respawn hook:\n%s", hook)
+	}
+}
+
 func TestIsTransientSendKeysError(t *testing.T) {
 	tests := []struct {
 		name string

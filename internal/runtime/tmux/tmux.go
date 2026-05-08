@@ -360,6 +360,7 @@ func (t *Tmux) NewSessionWithCommandAndEnv(name, workDir, command string, env ma
 		return err
 	}
 	t.postCreateSessionOptions(name)
+	t.postCreateSessionLifecycleHooks(name, env)
 	return nil
 }
 
@@ -376,6 +377,29 @@ func (t *Tmux) postCreateSessionOptions(name string) {
 	// when every pane dies at once and the reconciler can inspect dead panes.
 	t.run("set-option", "-t", name, "remain-on-exit", "on") //nolint:errcheck // best-effort
 	t.installTracePaneDiedHook(name)                         //nolint:errcheck // debug-only best-effort
+}
+
+func (t *Tmux) postCreateSessionLifecycleHooks(name string, env map[string]string) {
+	if !shouldAutoRespawnNamedSession(env) {
+		return
+	}
+	if err := t.SetAutoRespawnHook(name); err != nil && os.Getenv("GC_TMUX_TRACE") == "1" {
+		log.Printf("[TMUX-TRACE] failed to install auto-respawn hook for session=%s: %v", name, err)
+	}
+}
+
+func shouldAutoRespawnNamedSession(env map[string]string) bool {
+	if strings.TrimSpace(env["GC_SESSION_ORIGIN"]) != "named" {
+		return false
+	}
+	template := strings.TrimSpace(env["GC_TEMPLATE"])
+	if template == "" {
+		return false
+	}
+	if strings.HasSuffix(template, "/refinery") || template == "refinery" {
+		return false
+	}
+	return true
 }
 
 func (t *Tmux) installTracePaneDiedHook(session string) error {

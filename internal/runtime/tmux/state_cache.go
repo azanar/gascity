@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"golang.org/x/sync/singleflight"
@@ -36,6 +37,13 @@ type StateFetcher interface {
 	// FetchRunning returns the set of session names with live (non-dead) panes.
 	// Sessions with remain-on-exit corpses (pane_dead=1) are excluded.
 	FetchRunning(ctx context.Context) (map[string]bool, error)
+}
+
+// serverLikelyAliveChecker is an optional extension for fetchers that can
+// determine whether the last-known tmux server process/socket still exist
+// even when a fetch returns ErrNoServer.
+type serverLikelyAliveChecker interface {
+	ServerLikelyAlive() bool
 }
 
 // StateCache caches the set of running tmux sessions to avoid
@@ -100,8 +108,13 @@ func (c *StateCache) IsRunning(name string) bool {
 	// Note: fetchedAt is preserved on failure (never zeroed), so this only
 	// triggers after staleTTL of real wall-clock time since last success.
 	staleTTL := c.staleTTL
-	if isNoServerError(lastError) && c.noServerStaleTTL > staleTTL {
-		staleTTL = c.noServerStaleTTL
+	if isNoServerError(lastError) {
+		if checker, ok := c.fetcher.(serverLikelyAliveChecker); ok && checker.ServerLikelyAlive() {
+			return sessions[name]
+		}
+		if c.noServerStaleTTL > staleTTL {
+			staleTTL = c.noServerStaleTTL
+		}
 	}
 	if sessions == nil || fetchedAt.IsZero() || time.Since(fetchedAt) > staleTTL {
 		return false
@@ -146,8 +159,13 @@ func (c *StateCache) refresh() {
 
 		if err != nil {
 			if isNoServerError(err) && len(prevSessions) > 0 {
-				log.Printf("tmux state cache: server disappeared after previously seeing %d sessions (%s) in %v",
-					len(prevSessions), strings.Join(sortedSessionNames(prevSessions), ","), time.Since(prevFetchedAt).Round(time.Millisecond))
+				if checker, ok := c.fetcher.(serverLikelyAliveChecker); ok && checker.ServerLikelyAlive() {
+					log.Printf("tmux state cache: no-server probe while cached server still looks alive after previously seeing %d sessions (%s) in %v",
+						len(prevSessions), strings.Join(sortedSessionNames(prevSessions), ","), time.Since(prevFetchedAt).Round(time.Millisecond))
+				} else {
+					log.Printf("tmux state cache: server disappeared after previously seeing %d sessions (%s) in %v",
+						len(prevSessions), strings.Join(sortedSessionNames(prevSessions), ","), time.Since(prevFetchedAt).Round(time.Millisecond))
+				}
 			}
 			log.Printf("tmux state cache: refresh failed in %v: %v", elapsed, err)
 			c.mu.Lock()
@@ -200,7 +218,10 @@ func sortedSessionNames(sessions map[string]bool) []string {
 
 // tmuxFetcher implements StateFetcher using a real Tmux instance.
 type tmuxFetcher struct {
-	tm *Tmux
+	tm         *Tmux
+	mu         sync.RWMutex
+	serverPID  int
+	socketPath string
 }
 
 // FetchRunning runs `tmux list-panes -a -F '#{session_name}\t#{pane_dead}'`
@@ -238,7 +259,49 @@ func (f *tmuxFetcher) FetchRunning(ctx context.Context) (map[string]bool, error)
 	for name := range alive {
 		sessions[name] = true
 	}
+	f.captureServerIdentity(ctx)
 	return sessions, nil
+}
+
+func (f *tmuxFetcher) captureServerIdentity(ctx context.Context) {
+	out, err := f.tm.runCtx(ctx, "display-message", "-p", "#{pid}\t#{socket_path}")
+	if err != nil || out == "" {
+		return
+	}
+	parts := strings.SplitN(out, "\t", 2)
+	if len(parts) != 2 {
+		return
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil || pid <= 0 {
+		return
+	}
+	socketPath := strings.TrimSpace(parts[1])
+	f.mu.Lock()
+	f.serverPID = pid
+	f.socketPath = socketPath
+	f.mu.Unlock()
+}
+
+func (f *tmuxFetcher) ServerLikelyAlive() bool {
+	f.mu.RLock()
+	pid := f.serverPID
+	socketPath := f.socketPath
+	f.mu.RUnlock()
+	if pid <= 0 || socketPath == "" {
+		return false
+	}
+	if _, err := os.Stat(socketPath); err != nil {
+		return false
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	if err := proc.Signal(syscall.Signal(0)); err != nil {
+		return false
+	}
+	return true
 }
 
 // isNoServerError checks if the error is a "no server running" error.
