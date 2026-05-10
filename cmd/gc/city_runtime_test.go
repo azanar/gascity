@@ -276,6 +276,103 @@ func TestCityRuntimeDemandSnapshotReusesStablePatrolDemand(t *testing.T) {
 	}
 }
 
+func TestCityRuntimeEnsureManagedDoltPublishedForTickCallsHealthWhenManagedPortMissing(t *testing.T) {
+	t.Setenv("GC_BEADS", "bd")
+
+	healthCalls := 0
+	cr := &CityRuntime{
+		cityPath: "/tmp/test-city",
+		stderr:   io.Discard,
+		managedDoltHealth: func(cityPath string) error {
+			healthCalls++
+			if cityPath != "/tmp/test-city" {
+				t.Fatalf("health cityPath = %q, want %q", cityPath, "/tmp/test-city")
+			}
+			return nil
+		},
+		managedDoltOwned: func(cityPath string) (bool, error) {
+			if cityPath != "/tmp/test-city" {
+				t.Fatalf("owned cityPath = %q, want %q", cityPath, "/tmp/test-city")
+			}
+			return true, nil
+		},
+		managedDoltPort: func(cityPath string) string {
+			if cityPath != "/tmp/test-city" {
+				t.Fatalf("port cityPath = %q, want %q", cityPath, "/tmp/test-city")
+			}
+			return ""
+		},
+	}
+	cr.ensureManagedDoltPublishedForTick()
+
+	if healthCalls != 1 {
+		t.Fatalf("healthCalls = %d, want 1", healthCalls)
+	}
+}
+
+func TestCityRuntimeEnsureManagedDoltPublishedForTickSkipsHealthWhenManagedPortPresent(t *testing.T) {
+	t.Setenv("GC_BEADS", "bd")
+
+	healthCalls := 0
+	cr := &CityRuntime{
+		cityPath: "/tmp/test-city",
+		stderr:   io.Discard,
+		managedDoltHealth: func(string) error {
+			healthCalls++
+			return nil
+		},
+		managedDoltOwned: func(string) (bool, error) {
+			return true, nil
+		},
+		managedDoltPort: func(string) string {
+			return "3307"
+		},
+	}
+	cr.ensureManagedDoltPublishedForTick()
+
+	if healthCalls != 0 {
+		t.Fatalf("healthCalls = %d, want 0", healthCalls)
+	}
+}
+
+func TestNewCityRuntimePreflightsManagedDoltPublicationBeforeStartupStoreWork(t *testing.T) {
+	t.Setenv("GC_BEADS", "bd")
+
+	healthCalls := 0
+	cityPath := t.TempDir()
+	sp := runtime.NewFake()
+	_ = newCityRuntime(CityRuntimeParams{
+		CityPath: cityPath,
+		CityName: "test-city",
+		Cfg:      &config.City{},
+		SP:       sp,
+		ManagedDoltHealth: func(cityPath string) error {
+			healthCalls++
+			if cityPath == "" {
+				t.Fatal("health preflight got empty cityPath")
+			}
+			return nil
+		},
+		ManagedDoltOwned: func(string) (bool, error) {
+			return true, nil
+		},
+		ManagedDoltPort: func(string) string {
+			return ""
+		},
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
+			return DesiredStateResult{State: map[string]TemplateParams{}}
+		},
+		Dops:   newDrainOps(sp),
+		Rec:    events.Discard,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	})
+
+	if healthCalls != 1 {
+		t.Fatalf("healthCalls = %d, want 1", healthCalls)
+	}
+}
+
 func TestCityRuntimeDemandSnapshotRetainsOnlyPoolScaleCheckPartials(t *testing.T) {
 	sessionBeads := newSessionBeadSnapshot([]beads.Bead{{
 		ID:     "session-worker",
