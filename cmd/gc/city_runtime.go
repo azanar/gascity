@@ -446,6 +446,7 @@ func (cr *CityRuntime) run(ctx context.Context) {
 	// ctx cancellation, or normal completion alike.
 	startupComplete := false
 	if !retryStartupStep("startup", func() bool { return startupComplete }, func() {
+		cr.ensureManagedDoltPublishedForTick()
 		sessionBeads := cr.loadSessionBeadSnapshot()
 		startupTrace := cr.beginTraceCycle("startup", "initial_reconcile", sessionBeads)
 		completion := TraceCompletionAborted
@@ -456,7 +457,6 @@ func (cr *CityRuntime) run(ctx context.Context) {
 		}()
 
 		cleanupDeadRuntimeSessionCorpses(sessionBeads, cr.sessionDrains, cr.sp, cr.stderr)
-		cr.ensureManagedDoltPublishedForTick()
 		// Reap stale session beads from a previous run before building desired
 		// state, so desired state does not reference already-closed beads (#742).
 		if reapStaleSessionBeads(cr.cityBeadStore(), cr.sp, cr.sessionDrains, clock.Real{}, cr.stderr) > 0 {
@@ -667,6 +667,7 @@ func (cr *CityRuntime) tick(
 	if ctx.Err() != nil {
 		return
 	}
+	cr.ensureManagedDoltPublishedForTick()
 	sessionBeads := cr.loadSessionBeadSnapshot()
 	traceTrigger := trigger
 	traceDetail := "controller_tick"
@@ -769,7 +770,6 @@ func (cr *CityRuntime) tick(
 	// Reap open session beads whose tmux session is dead before loading demand
 	// so stale names cannot block desired-state computation (#742).
 	cleanupDeadRuntimeSessionCorpses(sessionBeads, cr.sessionDrains, cr.sp, cr.stderr)
-	cr.ensureManagedDoltPublishedForTick()
 	if reapStaleSessionBeads(cr.cityBeadStore(), cr.sp, cr.sessionDrains, clock.Real{}, cr.stderr) > 0 {
 		sessionBeads = cr.loadSessionBeadSnapshot()
 	}
@@ -1892,7 +1892,11 @@ func ensureManagedDoltPublishedForRuntime(
 		return
 	}
 	owned, err := ownedFn(cityPath)
-	if err != nil || !owned {
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: managed dolt ownership preflight: %v\n", logPrefix, err) //nolint:errcheck // best-effort stderr
+		return
+	}
+	if !owned {
 		return
 	}
 	if portFn(cityPath) != "" {

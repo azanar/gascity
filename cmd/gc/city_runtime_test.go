@@ -146,6 +146,52 @@ func (s sessionSnapshotListFailStore) List(query beads.ListQuery) ([]beads.Bead,
 	return s.Store.List(query)
 }
 
+type orderedRuntimeEvents struct {
+	mu     sync.Mutex
+	events []string
+}
+
+func (r *orderedRuntimeEvents) record(event string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.events = append(r.events, event)
+}
+
+func (r *orderedRuntimeEvents) reset() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.events = nil
+}
+
+func (r *orderedRuntimeEvents) index(event string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i, got := range r.events {
+		if got == event {
+			return i
+		}
+	}
+	return -1
+}
+
+func (r *orderedRuntimeEvents) snapshot() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.events...)
+}
+
+type managedDoltPreflightOrderStore struct {
+	beads.Store
+	events *orderedRuntimeEvents
+}
+
+func (s *managedDoltPreflightOrderStore) List(query beads.ListQuery) ([]beads.Bead, error) {
+	if query.Label == sessionBeadLabel {
+		s.events.record("session-list")
+	}
+	return s.Store.List(query)
+}
+
 func TestCityRuntimeRequestDeferredDrainFollowUpTick_PokesOnce(t *testing.T) {
 	cr := &CityRuntime{
 		sessionDrains: newDrainTracker(),
@@ -332,6 +378,194 @@ func TestCityRuntimeEnsureManagedDoltPublishedForTickSkipsHealthWhenManagedPortP
 
 	if healthCalls != 0 {
 		t.Fatalf("healthCalls = %d, want 0", healthCalls)
+	}
+}
+
+func TestCityRuntimeEnsureManagedDoltPublishedForTickLogsOwnershipError(t *testing.T) {
+	t.Setenv("GC_BEADS", "bd")
+
+	var stderr bytes.Buffer
+	healthCalls := 0
+	cr := &CityRuntime{
+		cityPath:  "/tmp/test-city",
+		logPrefix: "gc test",
+		stderr:    &stderr,
+		managedDoltHealth: func(string) error {
+			healthCalls++
+			return nil
+		},
+		managedDoltOwned: func(string) (bool, error) {
+			return false, errors.New("canonical endpoint unreadable")
+		},
+		managedDoltPort: func(string) string {
+			return ""
+		},
+	}
+	cr.ensureManagedDoltPublishedForTick()
+
+	if healthCalls != 0 {
+		t.Fatalf("healthCalls = %d, want 0", healthCalls)
+	}
+	if !strings.Contains(stderr.String(), "gc test: managed dolt ownership preflight: canonical endpoint unreadable") {
+		t.Fatalf("stderr = %q, want ownership preflight error", stderr.String())
+	}
+}
+
+func TestCityRuntimeTickPreflightsManagedDoltBeforeSessionSnapshot(t *testing.T) {
+	t.Setenv("GC_BEADS", "bd")
+
+	orderEvents := &orderedRuntimeEvents{}
+	store := &managedDoltPreflightOrderStore{
+		Store:  beads.NewMemStore(),
+		events: orderEvents,
+	}
+	sp := runtime.NewFake()
+	cr := &CityRuntime{
+		cityPath: t.TempDir(),
+		cityName: "test-city",
+		cfg:      &config.City{},
+		sp:       sp,
+		buildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
+			return DesiredStateResult{State: map[string]TemplateParams{}}
+		},
+		dops:          newDrainOps(sp),
+		rec:           events.Discard,
+		sessionDrains: newDrainTracker(),
+		logPrefix:     "gc test",
+		stdout:        io.Discard,
+		stderr:        io.Discard,
+		managedDoltHealth: func(string) error {
+			orderEvents.record("preflight")
+			return nil
+		},
+		managedDoltOwned: func(string) (bool, error) {
+			return true, nil
+		},
+		managedDoltPort: func(string) string {
+			return ""
+		},
+	}
+	cs := newControllerState(context.Background(), cr.cfg, sp, events.NewFake(), "test-city", cr.cityPath)
+	cs.cityBeadStore = store
+	cr.setControllerState(cs)
+
+	dirty := &atomic.Bool{}
+	lastProviderName := ""
+	prevPoolRunning := map[string]bool{}
+	cr.tick(context.Background(), dirty, &lastProviderName, cr.cityPath, &prevPoolRunning, "patrol")
+
+	preflightIndex := orderEvents.index("preflight")
+	sessionListIndex := orderEvents.index("session-list")
+	if preflightIndex == -1 || sessionListIndex == -1 || preflightIndex > sessionListIndex {
+		t.Fatalf("events = %#v, want preflight before first session-list", orderEvents.snapshot())
+	}
+}
+
+func TestCityRuntimeRunStartupPreflightsManagedDoltBeforeSessionSnapshot(t *testing.T) {
+	cityPath := t.TempDir()
+	tomlPath := filepath.Join(cityPath, "city.toml")
+	writeCityRuntimeConfig(t, tomlPath, "fake")
+	t.Setenv("GC_BEADS", "bd")
+
+	cfg, err := config.Load(osFS{}, tomlPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	orderEvents := &orderedRuntimeEvents{}
+	store := &managedDoltPreflightOrderStore{
+		Store:  beads.NewMemStore(),
+		events: orderEvents,
+	}
+	sp := runtime.NewFake()
+	managedPort := "3307"
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cr := newTestCityRuntime(t, CityRuntimeParams{
+		CityPath: cityPath,
+		CityName: "test-city",
+		TomlPath: tomlPath,
+		Cfg:      cfg,
+		SP:       sp,
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
+			return DesiredStateResult{State: map[string]TemplateParams{}}
+		},
+		Dops: newDrainOps(sp),
+		Rec:  events.Discard,
+		OnStarted: func() {
+			cancel()
+		},
+		ManagedDoltHealth: func(string) error {
+			orderEvents.record("preflight")
+			return nil
+		},
+		ManagedDoltOwned: func(string) (bool, error) {
+			return true, nil
+		},
+		ManagedDoltPort: func(string) string {
+			return managedPort
+		},
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	})
+	cs := newControllerState(context.Background(), cfg, sp, events.NewFake(), "test-city", cityPath)
+	cs.cityBeadStore = store
+	cr.setControllerState(cs)
+	orderEvents.reset()
+	managedPort = ""
+
+	cr.run(ctx)
+
+	preflightIndex := orderEvents.index("preflight")
+	sessionListIndex := orderEvents.index("session-list")
+	if preflightIndex == -1 || sessionListIndex == -1 || preflightIndex > sessionListIndex {
+		t.Fatalf("events = %#v, want preflight before first session-list", orderEvents.snapshot())
+	}
+}
+
+func TestCityRuntimeControlDispatcherPreflightsManagedDoltBeforeSessionSnapshot(t *testing.T) {
+	t.Setenv("GC_BEADS", "bd")
+
+	orderEvents := &orderedRuntimeEvents{}
+	store := &managedDoltPreflightOrderStore{
+		Store:  beads.NewMemStore(),
+		events: orderEvents,
+	}
+	sp := runtime.NewFake()
+	cr := &CityRuntime{
+		cityPath: "test-city",
+		cityName: "test-city",
+		cfg: &config.City{Agents: []config.Agent{
+			{Name: config.ControlDispatcherAgentName},
+		}},
+		sp:            sp,
+		dops:          newDrainOps(sp),
+		rec:           events.Discard,
+		sessionDrains: newDrainTracker(),
+		logPrefix:     "gc test",
+		stdout:        io.Discard,
+		stderr:        io.Discard,
+		managedDoltHealth: func(string) error {
+			orderEvents.record("preflight")
+			return nil
+		},
+		managedDoltOwned: func(string) (bool, error) {
+			return true, nil
+		},
+		managedDoltPort: func(string) string {
+			return ""
+		},
+	}
+	cs := newControllerState(context.Background(), cr.cfg, sp, events.NewFake(), "test-city", cr.cityPath)
+	cs.cityBeadStore = store
+	cr.setControllerState(cs)
+
+	cr.controlDispatcherTick(context.Background())
+
+	preflightIndex := orderEvents.index("preflight")
+	sessionListIndex := orderEvents.index("session-list")
+	if preflightIndex == -1 || sessionListIndex == -1 || preflightIndex > sessionListIndex {
+		t.Fatalf("events = %#v, want preflight before first session-list", orderEvents.snapshot())
 	}
 }
 
