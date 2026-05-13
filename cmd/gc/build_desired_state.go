@@ -1243,6 +1243,16 @@ func controlDispatcherOnlyConfig(cfg *config.City) *config.City {
 	return &cfgCopy
 }
 
+func namedSessionAllowsControllerWorkQuery(cityPath string, cfg *config.City, spec namedSessionSpec) bool {
+	if cfg == nil || spec.Agent == nil {
+		return false
+	}
+	if spec.Named != nil && strings.TrimSpace(spec.Named.Dir) != "" {
+		return true
+	}
+	return configuredRigName(cityPath, spec.Agent, cfg.Rigs) != ""
+}
+
 // discoverSessionBeads queries the store for open session beads that are
 // not already in the desired state and adds them. This enables "gc session
 // new" to create a bead that the reconciler then starts.
