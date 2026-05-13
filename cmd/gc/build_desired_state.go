@@ -438,6 +438,39 @@ func buildDesiredStateWithSessionBeads(
 		fmt.Fprintf(stderr, "namedWorkReady: %d assigned beads, %d named specs, ready=%v\n", len(assignedWorkBeads), len(namedSpecs), namedWorkReady) //nolint:errcheck
 	}
 	for identity, spec := range namedSpecs {
+		if spec.Mode == "always" || namedWorkReady[identity] || !namedSessionAllowsControllerWorkQuery(cityPath, cfg, spec) {
+			continue
+		}
+		// Controller-side work_query demand stays intentionally narrow.
+		// Generic city-scoped named sessions materialize from direct continuity
+		// (canonical bead or explicit assignee demand), while rig-scoped named
+		// sessions still probe here so the controller validates rig-local query
+		// env such as scoped Dolt credentials.
+		wq := spec.Agent.EffectiveWorkQuery()
+		if wq == "" {
+			continue
+		}
+		wq = expandAgentCommandTemplate(cityPath, cityName, spec.Agent, cfg.Rigs, "work_query", wq, stderr)
+		dir := agentCommandDir(cityPath, spec.Agent, cfg.Rigs)
+		probeEnv := controllerWorkQueryEnv(cityPath, cfg, spec.Agent)
+		if probeEnv == nil {
+			probeEnv = map[string]string{}
+		}
+		probeEnv["GC_AGENT"] = identity
+		probeEnv["GC_ALIAS"] = identity
+		probeEnv["GC_TEMPLATE"] = namedSessionBackingTemplate(spec)
+		probeEnv["GC_SESSION_NAME"] = spec.SessionName
+		probeEnv["GC_SESSION_ORIGIN"] = "named"
+		out, err := shellScaleCheck(prefixShellEnv(controllerQueryPrefixEnv(probeEnv), wq), dir, probeEnv)
+		if err != nil {
+			continue
+		}
+		trimmed := strings.TrimSpace(out)
+		if workQueryHasReadyWork(trimmed) {
+			namedWorkReady[identity] = true
+		}
+	}
+	for identity, spec := range namedSpecs {
 		canonicalBead, hasCanonical := findCanonicalNamedSessionBead(bp.sessionBeads, spec)
 		if !hasCanonical {
 			if _, conflict := findNamedSessionConflict(bp.sessionBeads, spec); conflict {
