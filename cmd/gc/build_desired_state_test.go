@@ -1824,6 +1824,47 @@ func TestBuildDesiredState_StoreBackedPoolUsesLogicalInstanceIdentity(t *testing
 	}
 }
 
+func TestBuildDesiredState_NamedRigSessionControllerProbeUsesNamedIdentityEnv(t *testing.T) {
+	cityPath := t.TempDir()
+	rigDir := filepath.Join(cityPath, "demo")
+	if err := os.MkdirAll(filepath.Join(cityPath, ".beads"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(rigDir, ".beads"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.City{
+		Workspace: config.Workspace{Name: "test-city"},
+		Rigs: []config.Rig{{
+			Name: "demo",
+			Path: rigDir,
+		}},
+		Agents: []config.Agent{{
+			Name: "worker",
+			Dir:  "demo",
+			WorkQuery: `sh -c 'test "$GC_ALIAS" = "demo/worker" && test "$GC_AGENT" = "demo/worker" && test "$GC_TEMPLATE" = "demo/worker" && test "$GC_SESSION_ORIGIN" = "named" && printf "[{\"id\":\"DM-1\"}]"'`,
+		}},
+		NamedSessions: []config.NamedSession{{
+			Template: "worker",
+			Dir:      "demo",
+			Mode:     "on_demand",
+		}},
+	}
+
+	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), beads.NewMemStore(), io.Discard)
+	if !dsResult.NamedSessionDemand["demo/worker"] {
+		t.Fatalf("NamedSessionDemand[demo/worker] = false, want true")
+	}
+	if len(dsResult.State) != 1 {
+		t.Fatalf("desired session count = %d, want 1; keys=%v", len(dsResult.State), mapKeys(dsResult.State))
+	}
+	for _, tp := range dsResult.State {
+		if tp.TemplateName != "demo/worker" {
+			t.Fatalf("TemplateName = %q, want %q", tp.TemplateName, "demo/worker")
+		}
+	}
+}
+
 func TestBuildDesiredState_StoreBackedPoolUsesQualifiedInstanceNameForBindings(t *testing.T) {
 	cityPath := t.TempDir()
 	store := beads.NewMemStore()

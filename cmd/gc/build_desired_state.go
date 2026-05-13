@@ -350,12 +350,21 @@ func buildDesiredStateWithSessionBeads(
 		}
 		wq = expandAgentCommandTemplate(cityPath, cityName, spec.Agent, cfg.Rigs, "work_query", wq, stderr)
 		dir := agentCommandDir(cityPath, spec.Agent, cfg.Rigs)
-		probeEnv := controllerQueryRuntimeEnv(cityPath, cfg, spec.Agent)
+		probeEnv := controllerWorkQueryEnv(cityPath, cfg, spec.Agent)
+		if probeEnv == nil {
+			probeEnv = map[string]string{}
+		}
+		probeEnv["GC_AGENT"] = identity
+		probeEnv["GC_ALIAS"] = identity
+		probeEnv["GC_TEMPLATE"] = namedSessionBackingTemplate(spec)
+		probeEnv["GC_SESSION_NAME"] = spec.SessionName
+		probeEnv["GC_SESSION_ORIGIN"] = "named"
 		out, err := shellScaleCheck(prefixShellEnv(controllerQueryPrefixEnv(probeEnv), wq), dir, probeEnv)
 		if err != nil {
 			continue
 		}
-		if workQueryHasReadyWork(strings.TrimSpace(out)) {
+		trimmed := strings.TrimSpace(out)
+		if workQueryHasReadyWork(trimmed) {
 			namedWorkReady[identity] = true
 		}
 	}
