@@ -1139,6 +1139,25 @@ func TestPollerSessionIdleEnoughFallsBackToIdleWaitWhenActivityUnavailable(t *te
 	}
 }
 
+func TestWorkerObserveNudgeTargetPrefersSessionNameWhenAvailable(t *testing.T) {
+	fake := runtime.NewFake()
+	if err := fake.Start(context.Background(), "worker-session", runtime.Config{}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	target := nudgeTarget{
+		sessionID:   "gc-worker",
+		sessionName: "worker-session",
+	}
+
+	obs, err := workerObserveNudgeTarget(target, nil, fake)
+	if err != nil {
+		t.Fatalf("workerObserveNudgeTarget: %v", err)
+	}
+	if !obs.Running {
+		t.Fatalf("obs.Running = false, want true when session_name runtime is live")
+	}
+}
+
 func TestShouldKeepNudgePollerAliveDuringStartupGrace(t *testing.T) {
 	t.Setenv("GC_BEADS", "file")
 	dir := t.TempDir()
@@ -2540,6 +2559,55 @@ func TestDeliverSlingNudgeWaitIdleWrapsInSystemReminder(t *testing.T) {
 		t.Fatalf("delivered message = %q, want sling reminder content", delivered)
 	}
 	assertSessionLastNudgeDeliveredAtStamped(t, store, info.ID)
+}
+
+func TestDeliverSlingNudgeQueuesFencedReminderAndStartsPollerForAsleepSession(t *testing.T) {
+	clearGCEnv(t)
+	disableManagedDoltRecoveryForTest(t)
+	clearInheritedCityRoutingEnv(t)
+	t.Setenv("GC_BEADS", "file")
+	dir := t.TempDir()
+	store := openNudgeBeadStore(dir)
+	fake := runtime.NewFake()
+
+	target := nudgeTarget{
+		cityPath:          dir,
+		agent:             config.Agent{Name: "worker"},
+		resolved:          &config.ResolvedProvider{Name: "claude"},
+		sessionID:         "gc-worker",
+		continuationEpoch: "7",
+		sessionName:       "worker-session",
+	}
+
+	var pollerCityPath, pollerAgent, pollerSession string
+	prev := startNudgePoller
+	startNudgePoller = func(cityPath, agentName, sessionName string) error {
+		pollerCityPath = cityPath
+		pollerAgent = agentName
+		pollerSession = sessionName
+		return nil
+	}
+	t.Cleanup(func() { startNudgePoller = prev })
+
+	var stdout, stderr bytes.Buffer
+	deliverSlingNudge(target, fake, store, dir, &stdout, &stderr)
+
+	pending, inFlight, dead, err := listQueuedNudges(dir, target.agent.QualifiedName(), time.Now())
+	if err != nil {
+		t.Fatalf("listQueuedNudges: %v", err)
+	}
+	if len(pending) != 1 || len(inFlight) != 0 || len(dead) != 0 {
+		t.Fatalf("pending=%d inFlight=%d dead=%d, want 1/0/0", len(pending), len(inFlight), len(dead))
+	}
+	if pending[0].SessionID != "gc-worker" {
+		t.Fatalf("queued nudge session_id = %q, want gc-worker", pending[0].SessionID)
+	}
+	if pending[0].ContinuationEpoch != "7" {
+		t.Fatalf("queued nudge continuation_epoch = %q, want 7", pending[0].ContinuationEpoch)
+	}
+	if pollerCityPath != dir || pollerAgent != target.agentKey() || pollerSession != target.sessionName {
+		t.Fatalf("startNudgePoller = (%q, %q, %q), want (%q, %q, %q)", pollerCityPath, pollerAgent, pollerSession, dir, target.agentKey(), target.sessionName)
+	}
 }
 
 func assertSessionLastNudgeDeliveredAtStamped(t *testing.T, store beads.Store, sessionID string) {

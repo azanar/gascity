@@ -36,7 +36,9 @@ const (
 	defaultQueuedNudgeDeadRetention = 1 * time.Hour
 	defaultNudgePollInterval        = 2 * time.Second
 	defaultNudgePollQuiescence      = 3 * time.Second
-	defaultNudgePollStartGrace      = 15 * time.Second
+	// A controller wake can legitimately take a couple of minutes when the
+	// session has to rematerialize a worktree and complete startup dialog.
+	defaultNudgePollStartGrace  = 5 * time.Minute
 	defaultNudgeWaitIdleTimeout     = 30 * time.Second
 )
 
@@ -112,13 +114,6 @@ func (t nudgeTarget) agentKey() string {
 		return t.identity
 	}
 	return t.sessionName
-}
-
-func (t nudgeTarget) pollerKey() string {
-	if t.sessionID != "" {
-		return t.sessionID
-	}
-	return t.agentKey()
 }
 
 func (t nudgeTarget) queueKeys() []string {
@@ -679,6 +674,18 @@ func requestManagedNudgeWake(target nudgeTarget, store beads.Store) error {
 }
 
 func workerHandleForNudgeTarget(target nudgeTarget, store beads.Store, sp runtime.Provider) (worker.Handle, error) {
+	if target.sessionName != "" {
+		return runtimeWorkerHandleWithConfig(
+			target.cityPath,
+			store,
+			sp,
+			target.cfg,
+			target.sessionName,
+			strings.TrimSpace(target.providerName()),
+			strings.TrimSpace(target.sessionTransport()),
+			nil,
+		)
+	}
 	if target.sessionID != "" {
 		return workerHandleForSessionWithConfig(target.cityPath, store, sp, target.cfg, target.sessionID)
 	}
@@ -695,6 +702,9 @@ func workerHandleForNudgeTarget(target nudgeTarget, store beads.Store, sp runtim
 }
 
 func workerObserveNudgeTarget(target nudgeTarget, store beads.Store, sp runtime.Provider) (worker.LiveObservation, error) {
+	if target.sessionName != "" {
+		return workerObserveSessionTargetWithConfig(target.cityPath, store, sp, target.cfg, target.sessionName)
+	}
 	if target.sessionID != "" {
 		return workerObserveSessionTargetWithConfig(target.cityPath, store, sp, target.cfg, target.sessionID)
 	}
@@ -1027,7 +1037,7 @@ func maybeStartNudgePoller(target nudgeTarget) {
 	if target.sessionTransport() == "acp" {
 		return
 	}
-	if err := startNudgePoller(target.cityPath, target.pollerKey(), target.sessionName); err != nil {
+	if err := startNudgePoller(target.cityPath, target.agentKey(), target.sessionName); err != nil {
 		return
 	}
 }
