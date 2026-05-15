@@ -236,6 +236,7 @@ func BeginDrainPatch(now time.Time, reason string) MetadataPatch {
 func SleepPatch(now time.Time, reason string) MetadataPatch {
 	return MetadataPatch{
 		"state":                     string(StateAsleep),
+		"state_reason":              "",
 		"sleep_reason":              reason,
 		"last_woke_at":              "",
 		"pending_create_claim":      "",
@@ -251,6 +252,7 @@ func SleepPatch(now time.Time, reason string) MetadataPatch {
 func AcknowledgeDrainPatch(freshWake bool) MetadataPatch {
 	patch := MetadataPatch{
 		"state":                     string(StateDrained),
+		"state_reason":              "",
 		"last_woke_at":              "",
 		"pending_create_claim":      "",
 		"pending_create_started_at": "",
