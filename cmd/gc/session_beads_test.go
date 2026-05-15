@@ -5122,11 +5122,11 @@ func TestReapStaleSessionBeads_HonorsRecentCreationCompleteProtection(t *testing
 		Type:   sessionBeadType,
 		Labels: []string{sessionBeadLabel},
 		Metadata: map[string]string{
-			"session_name":          "mayor",
-			"state":                 "active",
-			"state_reason":          "creation_complete",
-			"creation_complete_at":  now.Add(-90 * time.Second).UTC().Format(time.RFC3339),
-			"last_woke_at":          now.Add(-90 * time.Second).UTC().Format(time.RFC3339),
+			"session_name":         "mayor",
+			"state":                "active",
+			"state_reason":         "creation_complete",
+			"creation_complete_at": now.Add(-90 * time.Second).UTC().Format(time.RFC3339),
+			"last_woke_at":         now.Add(-90 * time.Second).UTC().Format(time.RFC3339),
 		},
 	})
 	if err != nil {
