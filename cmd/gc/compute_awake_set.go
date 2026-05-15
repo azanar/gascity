@@ -24,6 +24,7 @@ type AwakeInput struct {
 	WorkBeads          []AwakeWorkBead // in_progress assigned work plus ready open assigned work
 	ScaleCheckCounts   map[string]int  // agent template → scale_check count
 	NamedSessionDemand map[string]bool // named-session identity → routed/assigned work demand
+	NamedSessionWorkQ  map[string]bool // named-session identity → bridge-carried work_query demand
 	WorkSet            map[string]bool // agent template → work_query found pending work
 	RunningSessions    map[string]bool // session name → tmux exists
 	AttachedSessions   map[string]bool // session name → user attached
@@ -163,9 +164,13 @@ func ComputeAwakeSet(input AwakeInput) map[string]AwakeDecision {
 				desired[ns.Identity] = "named-always"
 			}
 		case "on_demand":
-			// On-demand named sessions wake only from named demand that was
-			// resolved by the desired-state pass, not generic template demand.
-			if !input.NamedSessionDemand[ns.Identity] {
+			reason := ""
+			switch {
+			case input.NamedSessionDemand[ns.Identity]:
+				reason = "named-demand"
+			case input.NamedSessionWorkQ[ns.Identity]:
+				reason = "work-query"
+			default:
 				continue
 			}
 			if agent, ok := agentsByName[ns.Template]; ok && agent.Suspended {
@@ -174,10 +179,10 @@ func ComputeAwakeSet(input AwakeInput) map[string]AwakeDecision {
 			if sn := resolveNamedSessionBeadName(input.SessionBeads, ns); sn != "" {
 				bead := findBeadBySessionName(input.SessionBeads, sn)
 				if bead != nil && !bead.DependencyOnly && !bead.Drained && bead.State != "closed" {
-					desired[sn] = "named-demand"
+					desired[sn] = reason
 				}
 			} else {
-				desired[ns.Identity] = "named-demand"
+				desired[ns.Identity] = reason
 			}
 		}
 	}
@@ -220,37 +225,19 @@ func ComputeAwakeSet(input AwakeInput) map[string]AwakeDecision {
 	// When work_query sees pending work but ScaleCheckCounts hasn't caught up
 	// (count is 0 or absent), wake exactly one session to handle it. This
 	// avoids thundering herd — scale_check will catch up on the next tick.
-	//
-	// For on-demand named sessions, buildDesiredState already used the same
-	// work_query signal to materialize the canonical bead. Mirror that here
-	// so the newly materialized or retained named session actually wakes.
 	for template, hasWork := range input.WorkSet {
 		if !hasWork {
 			continue
 		}
-		if isNamedSessionTemplate(input.NamedSessions, template) {
-			agent, ok := lookupAgent(template)
-			if !ok || agent.Suspended {
-				continue
-			}
-			for _, ns := range input.NamedSessions {
-				if ns.Template != template || ns.Mode != "on_demand" {
-					continue
-				}
-				if sn := resolveNamedSessionBeadName(input.SessionBeads, ns); sn != "" {
-					desired[sn] = "work-query"
-				} else {
-					desired[ns.Identity] = "work-query"
-				}
-			}
-			continue
-		}
 		if input.ScaleCheckCounts[template] > 0 {
-			continue // ScaleCheck already covers ordinary pool templates
+			continue // ScaleCheck already covers this template
 		}
 		agent, ok := lookupAgent(template)
 		if !ok || agent.Suspended {
 			continue
+		}
+		if isNamedSessionTemplate(input.NamedSessions, template) {
+			continue // named sessions are handled in the named-session pass
 		}
 		// collectActiveBeads already excludes DependencyOnly and Drained
 		if active := collectActiveBeads(input.SessionBeads, template); len(active) > 0 {
