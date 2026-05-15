@@ -1831,7 +1831,8 @@ type Agent struct {
 	// If unset, Gas City uses a three-tier default query:
 	//   1. in_progress work assigned to this session/alias (crash recovery)
 	//   2. ready work assigned to this session/alias (pre-assigned work)
-	//   3. ready unassigned work with gc.routed_to=<qualified-name>
+	//   3. ready unassigned work with gc.routed_to=<qualified-name>, with a
+	//      fallback to pool:<qualified-name> labels for manually labeled work
 	// When the controller probes for demand without session context, only the
 	// routed_to tier applies. Override to integrate with external task systems.
 	WorkQuery string `toml:"work_query,omitempty"`
@@ -2188,6 +2189,9 @@ func (a *Agent) EffectiveWorkQuery() string {
 			`r=$(bd ready --metadata-field gc.routed_to=` + target +
 			` --unassigned --exclude-type=epic --json --limit=1 2>/dev/null); ` +
 			`[ -n "$r" ] && [ "$r" != "[]" ] && printf "%s" "$r" && exit 0; ` +
+			`r=$(bd ready --label pool:` + target +
+			` --unassigned --exclude-type=epic --json --limit=1 2>/dev/null); ` +
+			`[ -n "$r" ] && [ "$r" != "[]" ] && printf "%s" "$r" && exit 0; ` +
 			`printf "[]"'`
 	}
 	return `sh -c '` +
@@ -2221,6 +2225,9 @@ func (a *Agent) EffectiveWorkQuery() string {
 		`*) exit 0 ;; ` +
 		`esac; ` +
 		`r=$(bd ready --metadata-field gc.routed_to=` + target +
+		` --unassigned --exclude-type=epic --json --limit=1 2>/dev/null); ` +
+		`[ -n "$r" ] && [ "$r" != "[]" ] && printf "%s" "$r" && exit 0; ` +
+		`r=$(bd ready --label pool:` + target +
 		` --unassigned --exclude-type=epic --json --limit=1 2>/dev/null); ` +
 		`[ -n "$r" ] && [ "$r" != "[]" ] && printf "%s" "$r" && exit 0; ` +
 		`bd ready --metadata-field gc.routed_to=` + legacyTarget +
