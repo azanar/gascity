@@ -2610,6 +2610,68 @@ func TestBdTransportRetryableErrorDoesNotTreatCommandTimeoutAsTransportFailure(t
 	}
 }
 
+func TestConfigureBdStoreMetadataFallbackUsesManagedLocalPortWithoutHost(t *testing.T) {
+	scopeRoot := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(scopeRoot, ".beads"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(scopeRoot, ".beads", "metadata.json"), []byte(`{"dolt_database":"ga"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	store := beads.NewBdStore(scopeRoot, func(_, _ string, _ ...string) ([]byte, error) {
+		return nil, fmt.Errorf("timed out after 120s: auto-importing 1 bytes from issues.jsonl into empty database...")
+	})
+
+	origWrite := writeBdMetadataDirectFunc
+	t.Cleanup(func() {
+		writeBdMetadataDirectFunc = origWrite
+	})
+
+	var got struct {
+		host string
+		port string
+		db   string
+		id   string
+		kvs  map[string]string
+	}
+	writeBdMetadataDirectFunc = func(host, port, user, password, database, id string, kvs map[string]string) error {
+		got.host = host
+		got.port = port
+		got.db = database
+		got.id = id
+		got.kvs = map[string]string{}
+		for k, v := range kvs {
+			got.kvs[k] = v
+		}
+		return nil
+	}
+
+	configureBdStoreMetadataFallback(store, scopeRoot, map[string]string{
+		"GC_DOLT_PORT": "35852",
+		"GC_DOLT_USER": "root",
+	})
+
+	if err := store.SetMetadata("ga-ji9zdi", "state", "awake"); err != nil {
+		t.Fatalf("SetMetadata: %v", err)
+	}
+	if got.host != "" {
+		t.Fatalf("fallback host = %q, want empty managed-local host", got.host)
+	}
+	if got.port != "35852" {
+		t.Fatalf("fallback port = %q, want 35852", got.port)
+	}
+	if got.db != "ga" {
+		t.Fatalf("fallback database = %q, want ga", got.db)
+	}
+	if got.id != "ga-ji9zdi" {
+		t.Fatalf("fallback id = %q, want ga-ji9zdi", got.id)
+	}
+	if got.kvs["state"] != "awake" {
+		t.Fatalf("fallback metadata = %#v, want state=awake", got.kvs)
+	}
+}
+
 func TestBdTransportTransientDisconnectDoesNotTriggerManagedRecovery(t *testing.T) {
 	t.Setenv("GC_BEADS", "bd")
 

@@ -2030,6 +2030,56 @@ func TestBdStoreSetMetadataCLINotFound(t *testing.T) {
 	}
 }
 
+func TestBdStoreSetMetadataFallsBackOnImportLoop(t *testing.T) {
+	runner := func(_, _ string, _ ...string) ([]byte, error) {
+		return nil, fmt.Errorf("timed out after 120s: auto-importing 15176999 bytes from /city/.beads/issues.jsonl into empty database...")
+	}
+	s := beads.NewBdStore("/city", runner)
+	var gotID string
+	var gotKVs map[string]string
+	s.SetMetadataFallback(func(id string, kvs map[string]string) error {
+		gotID = id
+		gotKVs = kvs
+		return nil
+	})
+	if err := s.SetMetadata("bd-42", "key", "value"); err != nil {
+		t.Fatalf("SetMetadata fallback err = %v, want nil", err)
+	}
+	if gotID != "bd-42" {
+		t.Fatalf("fallback id = %q, want %q", gotID, "bd-42")
+	}
+	if gotKVs["key"] != "value" {
+		t.Fatalf("fallback kvs = %#v, want key=value", gotKVs)
+	}
+}
+
+func TestBdStoreSetMetadataBatchFallsBackOnImportLoop(t *testing.T) {
+	runner := func(_, _ string, _ ...string) ([]byte, error) {
+		return nil, fmt.Errorf("exit status 1: auto-import from /city/.beads/issues.jsonl failed: query error: context canceled")
+	}
+	s := beads.NewBdStore("/city", runner)
+	var gotID string
+	var gotKVs map[string]string
+	s.SetMetadataFallback(func(id string, kvs map[string]string) error {
+		gotID = id
+		gotKVs = map[string]string{}
+		for k, v := range kvs {
+			gotKVs[k] = v
+		}
+		return nil
+	})
+	want := map[string]string{"a": "1", "b": "2"}
+	if err := s.SetMetadataBatch("bd-42", want); err != nil {
+		t.Fatalf("SetMetadataBatch fallback err = %v, want nil", err)
+	}
+	if gotID != "bd-42" {
+		t.Fatalf("fallback id = %q, want %q", gotID, "bd-42")
+	}
+	if len(gotKVs) != len(want) || gotKVs["a"] != "1" || gotKVs["b"] != "2" {
+		t.Fatalf("fallback kvs = %#v, want %#v", gotKVs, want)
+	}
+}
+
 func TestBdStoreSetMetadataBatchCLINotFound(t *testing.T) {
 	runner := func(_, _ string, _ ...string) ([]byte, error) {
 		return nil, fmt.Errorf("exit status 1: Error updating x: no issue found matching \"bd-42\"")

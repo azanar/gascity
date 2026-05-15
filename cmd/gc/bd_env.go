@@ -37,7 +37,9 @@ func bdStoreForCity(dir, cityPath string) *beads.BdStore {
 	if err != nil {
 		cfg = nil
 	}
-	return beads.NewBdStoreWithPrefix(dir, bdCommandRunnerForCity(cityPath), issuePrefixForScope(dir, cityPath, cfg))
+	store := beads.NewBdStoreWithPrefix(dir, bdCommandRunnerForCity(cityPath), issuePrefixForScope(dir, cityPath, cfg))
+	configureBdStoreMetadataFallback(store, dir, bdRuntimeEnv(cityPath))
+	return store
 }
 
 // bdStoreForRig opens a bead store at rigDir using rig-level Dolt config
@@ -53,7 +55,9 @@ func bdStoreForRig(rigDir, cityPath string, cfg *config.City, knownPrefix ...str
 			}
 		}
 	}
-	return beads.NewBdStoreWithPrefix(rigDir, bdCommandRunnerForRig(cityPath, cfg, rigDir), prefix)
+	store := beads.NewBdStoreWithPrefix(rigDir, bdCommandRunnerForRig(cityPath, cfg, rigDir), prefix)
+	configureBdStoreMetadataFallback(store, rigDir, bdRuntimeEnvForRig(cityPath, cfg, rigDir))
+	return store
 }
 
 func controlBdStoreForCity(dir, cityPath string, cfg *config.City) *beads.BdStore {

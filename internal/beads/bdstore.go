@@ -155,13 +155,18 @@ type PurgeResult struct {
 	Purged int
 }
 
+// MetadataFallbackFunc optionally applies metadata writes when the bd CLI
+// metadata path is wedged but the underlying store remains directly writable.
+type MetadataFallbackFunc func(id string, kvs map[string]string) error
+
 // BdStore implements Store by shelling out to the bd CLI (beads v0.55.1+).
 // It delegates all persistence to bd's embedded Dolt database.
 type BdStore struct {
-	dir         string          // city root directory (where .beads/ lives)
-	runner      CommandRunner   // injectable for testing
-	purgeRunner PurgeRunnerFunc // injectable for testing; nil uses exec default
-	idPrefix    string          // bead ID prefix owned by this store, without trailing "-"
+	dir              string               // city root directory (where .beads/ lives)
+	runner           CommandRunner        // injectable for testing
+	purgeRunner      PurgeRunnerFunc      // injectable for testing; nil uses exec default
+	idPrefix         string               // bead ID prefix owned by this store, without trailing "-"
+	metadataFallback MetadataFallbackFunc // optional direct metadata writer
 }
 
 const bdTransientWriteAttempts = 3
@@ -174,6 +179,12 @@ func NewBdStore(dir string, runner CommandRunner) *BdStore {
 // NewBdStoreWithPrefix creates a BdStore with an explicit owned bead ID prefix.
 func NewBdStoreWithPrefix(dir string, runner CommandRunner, idPrefix string) *BdStore {
 	return &BdStore{dir: dir, runner: runner, idPrefix: normalizeIDPrefix(idPrefix)}
+}
+
+// SetMetadataFallback installs an optional direct metadata writer used only
+// when the bd CLI metadata path is clearly wedged.
+func (s *BdStore) SetMetadataFallback(fn MetadataFallbackFunc) {
+	s.metadataFallback = fn
 }
 
 // IDPrefix returns the bead ID prefix owned by this store, without trailing "-".
@@ -794,6 +805,14 @@ func (s *BdStore) SetMetadata(id, key, value string) error {
 		if isBdNotFound(err) {
 			return fmt.Errorf("setting metadata on %q: %w", id, ErrNotFound)
 		}
+		if used, fbErr := s.applyMetadataFallback(err, id, map[string]string{key: value}); used && fbErr == nil {
+			return nil
+		} else if used && fbErr != nil {
+			if errors.Is(fbErr, ErrNotFound) {
+				return fmt.Errorf("setting metadata on %q: %w", id, ErrNotFound)
+			}
+			return fmt.Errorf("setting metadata on %q: %w", id, fbErr)
+		}
 		return fmt.Errorf("setting metadata on %q: %w", id, err)
 	}
 	return nil
@@ -820,9 +839,35 @@ func (s *BdStore) SetMetadataBatch(id string, kvs map[string]string) error {
 		if isBdNotFound(err) {
 			return fmt.Errorf("setting metadata on %q: %w", id, ErrNotFound)
 		}
+		if used, fbErr := s.applyMetadataFallback(err, id, kvs); used && fbErr == nil {
+			return nil
+		} else if used && fbErr != nil {
+			if errors.Is(fbErr, ErrNotFound) {
+				return fmt.Errorf("setting metadata on %q: %w", id, ErrNotFound)
+			}
+			return fmt.Errorf("setting metadata on %q: %w", id, fbErr)
+		}
 		return fmt.Errorf("setting metadata on %q: %w", id, err)
 	}
 	return nil
+}
+
+func shouldUseMetadataFallback(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "auto-importing") ||
+		strings.Contains(msg, "empty database") ||
+		strings.Contains(msg, "auto-import from") ||
+		strings.Contains(msg, "query error: context canceled")
+}
+
+func (s *BdStore) applyMetadataFallback(err error, id string, kvs map[string]string) (bool, error) {
+	if s.metadataFallback == nil || !shouldUseMetadataFallback(err) {
+		return false, nil
+	}
+	return true, s.metadataFallback(id, kvs)
 }
 
 func (s *BdStore) runBDTransientWrite(args ...string) error {
