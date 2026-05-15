@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gastownhall/gascity/internal/beads"
@@ -86,10 +88,35 @@ type ExecRunner func(ctx context.Context, command, dir string, env []string) ([]
 
 // shellExecRunner is the production ExecRunner using os/exec.
 func shellExecRunner(ctx context.Context, command, dir string, env []string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "sh", "-c", command)
+	cmd := exec.Command("sh", "-c", command)
 	cmd.Dir = dir
 	cmd.Env = mergeOrderExecEnv(cmd.Environ(), env)
-	return cmd.CombinedOutput()
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	var output bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- cmd.Wait()
+	}()
+
+	select {
+	case err := <-waitCh:
+		return output.Bytes(), err
+	case <-ctx.Done():
+		pgid, err := syscall.Getpgid(cmd.Process.Pid)
+		if err == nil {
+			_ = terminateProcessGroup(pgid, 2*time.Second)
+		}
+		<-waitCh
+		return output.Bytes(), ctx.Err()
+	}
 }
 
 func mergeOrderExecEnv(environ, env []string) []string {
@@ -458,9 +485,8 @@ func (m *memoryOrderDispatcher) launchDispatchOne(ctx context.Context, store bea
 
 // cancel signals all in-flight dispatchOne goroutines to terminate. Safe
 // to call multiple times. Caller should follow with drain to wait for
-// goroutine completion (exec.CommandContext propagates the cancel as
-// SIGKILL; dispatchOne's deferred cleanup writes the tracking-bead
-// outcome before doneInflight signals drain).
+// goroutine completion; dispatchOne's deferred cleanup writes the
+// tracking-bead outcome before doneInflight signals drain.
 func (m *memoryOrderDispatcher) cancel() {
 	if m.dispatchCancel != nil {
 		m.dispatchCancel()

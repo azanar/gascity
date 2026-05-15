@@ -10,8 +10,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -2669,6 +2671,55 @@ func TestOrderDispatchExecTimeout(t *testing.T) {
 	}
 }
 
+func TestShellExecRunnerKillsProcessGroupOnTimeout(t *testing.T) {
+	workDir := t.TempDir()
+	pidPath := filepath.Join(workDir, "child.pid")
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	command := fmt.Sprintf("sh -c 'trap \"\" TERM; echo $$ > %q; while :; do sleep 1; done' & wait", pidPath)
+	_, err := shellExecRunner(ctx, command, workDir, nil)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("shellExecRunner() error = %v, want %v", err, context.DeadlineExceeded)
+	}
+
+	pid := waitForPIDFile(t, pidPath)
+	deadline := time.Now().Add(3 * time.Second)
+	for processExists(pid) {
+		if time.Now().After(deadline) {
+			t.Fatalf("child process %d survived timeout cleanup", pid)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+}
+
+func waitForPIDFile(t *testing.T, path string) int {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			pid, convErr := strconv.Atoi(strings.TrimSpace(string(data)))
+			if convErr != nil {
+				t.Fatalf("parse pid from %s: %v", path, convErr)
+			}
+			return pid
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("read pid file %s: %v", path, err)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for pid file %s", path)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func processExists(pid int) bool {
+	err := syscall.Kill(pid, 0)
+	return err == nil || !errors.Is(err, syscall.ESRCH)
+}
+
 func TestEffectiveTimeout(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -5036,8 +5087,8 @@ func TestOrderDispatcherCancelTerminatesInFlight(t *testing.T) {
 	store := beads.NewMemStore()
 	execStarted := make(chan struct{})
 
-	// Exec respects ctx — returns when canceled. This mirrors what
-	// exec.CommandContext does in production: SIGKILL on ctx.Done.
+	// Exec respects ctx — returns when canceled. This mirrors the
+	// production runner's forced subprocess teardown on ctx.Done.
 	fakeExec := func(ctx context.Context, _, _ string, _ []string) ([]byte, error) {
 		close(execStarted)
 		<-ctx.Done()
