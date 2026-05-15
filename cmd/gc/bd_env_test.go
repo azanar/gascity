@@ -2620,7 +2620,7 @@ func TestConfigureBdStoreMetadataFallbackUsesManagedLocalPortWithoutHost(t *test
 	}
 
 	store := beads.NewBdStore(scopeRoot, func(_, _ string, _ ...string) ([]byte, error) {
-		return nil, fmt.Errorf("timed out after 120s: auto-importing 1 bytes from issues.jsonl into empty database...")
+		return nil, fmt.Errorf("timed out after 120s: auto-importing 1 bytes from issues.jsonl into empty database")
 	})
 
 	origWrite := writeBdMetadataDirectFunc
@@ -2635,7 +2635,7 @@ func TestConfigureBdStoreMetadataFallbackUsesManagedLocalPortWithoutHost(t *test
 		id   string
 		kvs  map[string]string
 	}
-	writeBdMetadataDirectFunc = func(host, port, user, password, database, id string, kvs map[string]string) error {
+	writeBdMetadataDirectFunc = func(host, port, _, _, database, id string, kvs map[string]string) error {
 		got.host = host
 		got.port = port
 		got.db = database

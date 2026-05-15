@@ -2032,7 +2032,7 @@ func TestBdStoreSetMetadataCLINotFound(t *testing.T) {
 
 func TestBdStoreSetMetadataFallsBackOnImportLoop(t *testing.T) {
 	runner := func(_, _ string, _ ...string) ([]byte, error) {
-		return nil, fmt.Errorf("timed out after 120s: auto-importing 15176999 bytes from /city/.beads/issues.jsonl into empty database...")
+		return nil, fmt.Errorf("timed out after 120s: auto-importing 15176999 bytes from /city/.beads/issues.jsonl into empty database")
 	}
 	s := beads.NewBdStore("/city", runner)
 	var gotID string
