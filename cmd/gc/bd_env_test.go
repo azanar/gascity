@@ -443,18 +443,11 @@ dolt.auto-start: false
 	if got := currentResolvableManagedDoltPort(cityPath); got != strconv.Itoa(port) {
 		t.Fatalf("currentResolvableManagedDoltPort() = %q, want %d", got, port)
 	}
-	target, ok, err := resolvedRuntimeCityDoltTarget(cityPath, true)
-	if err != nil {
-		t.Fatalf("resolvedRuntimeCityDoltTarget() error = %v", err)
-	}
-	if !ok {
-		t.Fatal("resolvedRuntimeCityDoltTarget() ok = false, want true")
-	}
-	if got := target.Port; got != strconv.Itoa(port) {
-		t.Fatalf("resolvedRuntimeCityDoltTarget().Port = %q, want %d", got, port)
-	}
 
-	env := mustBdRuntimeEnv(t, cityPath)
+	env, err := bdRuntimeEnvWithError(cityPath)
+	if err != nil {
+		t.Fatalf("bdRuntimeEnvWithError() error = %v", err)
+	}
 	want := strconv.Itoa(port)
 	if got := env["GC_DOLT_PORT"]; got != want {
 		t.Fatalf("GC_DOLT_PORT = %q, want provider-state port %q", got, want)
@@ -465,6 +458,137 @@ dolt.auto-start: false
 	if got := env["GC_DOLT_HOST"]; got != "" {
 		t.Fatalf("GC_DOLT_HOST = %q, want empty for managed provider-state target", got)
 	}
+
+	publishedState, err := readDoltRuntimeStateFile(managedDoltStatePath(cityPath))
+	if err != nil {
+		t.Fatalf("read published state: %v", err)
+	}
+	if publishedState.Port != port || publishedState.PID != listener.Process.Pid {
+		t.Fatalf("published state = %+v, want pid %d port %d", publishedState, listener.Process.Pid, port)
+	}
+	mirror, err := os.ReadFile(filepath.Join(cityPath, ".beads", "dolt-server.port"))
+	if err != nil {
+		t.Fatalf("read port mirror: %v", err)
+	}
+	if got := strings.TrimSpace(string(mirror)); got != strconv.Itoa(port) {
+		t.Fatalf("port mirror = %q, want %d", got, port)
+	}
+}
+
+func TestResolvedRuntimeCityDoltTargetWithoutRecoveryDoesNotPublishProviderState(t *testing.T) {
+	t.Setenv("GC_BEADS", "bd")
+	t.Setenv("GC_DOLT", "skip")
+	t.Setenv("GC_DOLT_HOST", "")
+	_ = os.Unsetenv("GC_DOLT_HOST")
+	t.Setenv("GC_DOLT_PORT", "")
+	_ = os.Unsetenv("GC_DOLT_PORT")
+
+	cityPath := t.TempDir()
+	writeMinimalCityToml(t, cityPath)
+	if err := os.MkdirAll(filepath.Join(cityPath, ".beads"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cityPath, ".beads", "config.yaml"), []byte(`issue_prefix: demo
+gc.endpoint_origin: managed_city
+gc.endpoint_status: verified
+dolt.auto-start: false
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	port := writeReachableProviderManagedDoltState(t, cityPath)
+
+	target, ok, err := resolvedRuntimeCityDoltTarget(cityPath, false)
+	if err == nil || !contract.IsManagedRuntimeUnavailable(err) {
+		t.Fatalf("resolvedRuntimeCityDoltTarget() error = %v, want managed runtime unavailable", err)
+	}
+	if ok {
+		t.Fatalf("resolvedRuntimeCityDoltTarget() ok = true with target %+v, want no fallback target", target)
+	}
+	if got := currentResolvableManagedDoltPort(cityPath); got != strconv.Itoa(port) {
+		t.Fatalf("currentResolvableManagedDoltPort() = %q, want %d", got, port)
+	}
+	if _, err := os.Stat(managedDoltStatePath(cityPath)); !os.IsNotExist(err) {
+		t.Fatalf("published state should remain absent when recovery is disabled, stat err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(cityPath, ".beads", "dolt-server.port")); !os.IsNotExist(err) {
+		t.Fatalf("port mirror should remain absent when recovery is disabled, stat err = %v", err)
+	}
+}
+
+func TestResolvedRuntimeCityDoltTargetFallsBackToEnvWhenProviderStateIsNotOwned(t *testing.T) {
+	t.Setenv("GC_BEADS", "file")
+	t.Setenv("GC_DOLT", "skip")
+	t.Setenv("GC_DOLT_HOST", "external-db.example.com")
+	t.Setenv("GC_DOLT_PORT", "3307")
+
+	cityPath := t.TempDir()
+	if err := os.WriteFile(filepath.Join(cityPath, "city.toml"), []byte(`[workspace]
+name = "demo"
+
+[beads]
+provider = "file"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(cityPath, ".beads"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cityPath, ".beads", "config.yaml"), []byte(`issue_prefix: demo
+gc.endpoint_origin: managed_city
+gc.endpoint_status: verified
+dolt.auto-start: false
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeReachableProviderManagedDoltState(t, cityPath)
+
+	target, ok, err := resolvedRuntimeCityDoltTarget(cityPath, true)
+	if err != nil {
+		t.Fatalf("resolvedRuntimeCityDoltTarget() error = %v, want env fallback", err)
+	}
+	if !ok {
+		t.Fatal("resolvedRuntimeCityDoltTarget() ok = false, want env fallback")
+	}
+	if target.Host != "external-db.example.com" || target.Port != "3307" || !target.External {
+		t.Fatalf("resolvedRuntimeCityDoltTarget() = %+v, want external env target", target)
+	}
+	if _, err := os.Stat(managedDoltStatePath(cityPath)); !os.IsNotExist(err) {
+		t.Fatalf("published state should remain absent for not-owned recovery, stat err = %v", err)
+	}
+}
+
+func TestResolvedRuntimeCityDoltTargetSurfacesNotOwnedProviderStateWhenNoFallbackResolves(t *testing.T) {
+	t.Setenv("GC_BEADS", "file")
+	t.Setenv("GC_DOLT", "skip")
+	_ = os.Unsetenv("GC_DOLT_HOST")
+	_ = os.Unsetenv("GC_DOLT_PORT")
+
+	cityPath := t.TempDir()
+	if err := os.WriteFile(filepath.Join(cityPath, "city.toml"), []byte(`[workspace]
+name = "demo"
+
+[beads]
+provider = "file"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(cityPath, ".beads"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cityPath, ".beads", "config.yaml"), []byte(`issue_prefix: demo
+gc.endpoint_origin: managed_city
+gc.endpoint_status: verified
+dolt.auto-start: false
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeReachableProviderManagedDoltState(t, cityPath)
+
+	target, ok, err := resolvedRuntimeCityDoltTarget(cityPath, true)
+	if err == nil {
+		t.Fatalf("resolvedRuntimeCityDoltTarget() error = nil with ok=%v target=%+v, want not-owned recovery error", ok, target)
+	}
+	requireErrorContains(t, err, "managed dolt lifecycle is not owned")
 }
 
 func TestResolvedRuntimeCityDoltTargetDoesNotMaskInvalidCanonicalConfigWithProviderState(t *testing.T) {
