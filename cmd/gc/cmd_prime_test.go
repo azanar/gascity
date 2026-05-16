@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -564,70 +565,102 @@ prompt_template = "prompts/worker.md"
 }
 
 func TestDoPrimeWithHook_CodexJSONFormatInfersAgentFromWorkDir(t *testing.T) {
-	clearGCEnv(t)
-	t.Setenv("GC_TEMPLATE", "")
-	t.Setenv("GC_HOOK_EVENT_NAME", "SessionStart")
-	withPrimeHookStdin(t)
+	for _, tt := range []struct {
+		name        string
+		identity    string
+		agentDir    string
+		agentName   string
+		promptFile  string
+		promptText  string
+		beaconAgent string
+	}{
+		{
+			name:        "city scoped",
+			identity:    "mayor",
+			agentName:   "mayor",
+			promptFile:  "prompts/mayor.md",
+			promptText:  "mayor startup prompt\n",
+			beaconAgent: "mayor",
+		},
+		{
+			name:        "rig scoped",
+			identity:    "hello-world/witness",
+			agentDir:    "hello-world",
+			agentName:   "witness",
+			promptFile:  "prompts/witness.md",
+			promptText:  "witness startup prompt\n",
+			beaconAgent: "hello-world/witness",
+		},
+		{
+			name:        "workflow style",
+			identity:    "gascity/workflows.codex-max",
+			agentDir:    "gascity",
+			agentName:   "workflows.codex-max",
+			promptFile:  "prompts/codex-max.md",
+			promptText:  "codex-max startup prompt\n",
+			beaconAgent: "gascity/workflows.codex-max",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			clearGCEnv(t)
+			clearInheritedCityRoutingEnv(t)
+			t.Setenv("GC_TEMPLATE", "")
+			t.Setenv("GC_HOOK_EVENT_NAME", "SessionStart")
+			withPrimeHookStdin(t)
 
-	cityDir := t.TempDir()
-	agentDir := filepath.Join(cityDir, ".gc", "agents", "mayor")
-	promptDir := filepath.Join(cityDir, "prompts")
-	if err := os.MkdirAll(agentDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(agentDir): %v", err)
-	}
-	if err := os.MkdirAll(promptDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(promptDir): %v", err)
-	}
-	const promptContent = "mayor startup prompt\n"
-	if err := os.WriteFile(filepath.Join(promptDir, "mayor.md"), []byte(promptContent), 0o644); err != nil {
-		t.Fatalf("WriteFile(prompt): %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(cityDir, "city.toml"), []byte(`
+			cityDir := t.TempDir()
+			agentWorkDirParts := append([]string{cityDir, ".gc", "agents"}, strings.Split(tt.identity, "/")...)
+			agentWorkDir := filepath.Join(agentWorkDirParts...)
+			if err := os.MkdirAll(agentWorkDir, 0o755); err != nil {
+				t.Fatalf("MkdirAll(agentWorkDir): %v", err)
+			}
+			promptPath := filepath.Join(cityDir, tt.promptFile)
+			if err := os.MkdirAll(filepath.Dir(promptPath), 0o755); err != nil {
+				t.Fatalf("MkdirAll(prompt dir): %v", err)
+			}
+			if err := os.WriteFile(promptPath, []byte(tt.promptText), 0o644); err != nil {
+				t.Fatalf("WriteFile(prompt): %v", err)
+			}
+			cityTOML := fmt.Sprintf(`
 [workspace]
 name = "gastown"
 
 [[agent]]
-name = "mayor"
-prompt_template = "prompts/mayor.md"
-`), 0o644); err != nil {
-		t.Fatalf("WriteFile(city.toml): %v", err)
-	}
+name = %q
+dir = %q
+prompt_template = %q
+`, tt.agentName, tt.agentDir, tt.promptFile)
+			if err := os.WriteFile(filepath.Join(cityDir, "city.toml"), []byte(cityTOML), 0o644); err != nil {
+				t.Fatalf("WriteFile(city.toml): %v", err)
+			}
+			t.Chdir(agentWorkDir)
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd: %v", err)
-	}
-	if err := os.Chdir(agentDir); err != nil {
-		t.Fatalf("Chdir(agentDir): %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(cwd)
-	})
+			var stdout, stderr bytes.Buffer
+			code := doPrimeWithHookFormat(nil, &stdout, &stderr, true, hookOutputFormatCodex, false)
+			if code != 0 {
+				t.Fatalf("doPrimeWithHookFormat() = %d, want 0; stderr=%q", code, stderr.String())
+			}
 
-	var stdout, stderr bytes.Buffer
-	code := doPrimeWithHookFormat(nil, &stdout, &stderr, true, hookOutputFormatCodex, false)
-	if code != 0 {
-		t.Fatalf("doPrimeWithHookFormat() = %d, want 0; stderr=%q", code, stderr.String())
-	}
-
-	var got struct {
-		HookSpecificOutput struct {
-			HookEventName     string `json:"hookEventName"`
-			AdditionalContext string `json:"additionalContext"`
-		} `json:"hookSpecificOutput"`
-	}
-	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
-		t.Fatalf("hook output is not JSON: %v; stdout=%q", err, stdout.String())
-	}
-	if got.HookSpecificOutput.HookEventName != "SessionStart" {
-		t.Fatalf("hookEventName = %q, want SessionStart", got.HookSpecificOutput.HookEventName)
-	}
-	context := got.HookSpecificOutput.AdditionalContext
-	if !strings.Contains(context, strings.TrimSpace(promptContent)) {
-		t.Fatalf("additionalContext = %q, want mayor prompt", context)
-	}
-	if !strings.Contains(context, "[gastown] mayor") {
-		t.Fatalf("additionalContext = %q, want hook beacon", context)
+			var got struct {
+				HookSpecificOutput struct {
+					HookEventName     string `json:"hookEventName"`
+					AdditionalContext string `json:"additionalContext"`
+				} `json:"hookSpecificOutput"`
+			}
+			if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+				t.Fatalf("hook output is not JSON: %v; stdout=%q", err, stdout.String())
+			}
+			if got.HookSpecificOutput.HookEventName != "SessionStart" {
+				t.Fatalf("hookEventName = %q, want SessionStart", got.HookSpecificOutput.HookEventName)
+			}
+			context := got.HookSpecificOutput.AdditionalContext
+			if !strings.Contains(context, strings.TrimSpace(tt.promptText)) {
+				t.Fatalf("additionalContext = %q, want prompt %q", context, strings.TrimSpace(tt.promptText))
+			}
+			if !strings.Contains(context, "[gastown] "+tt.beaconAgent) {
+				t.Fatalf("additionalContext = %q, want hook beacon for %s", context, tt.beaconAgent)
+			}
+		})
 	}
 }
 

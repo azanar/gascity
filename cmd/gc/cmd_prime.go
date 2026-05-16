@@ -145,10 +145,6 @@ func doPrimeWithHookFormat(args []string, stdout, stderr io.Writer, hookMode boo
 	if len(args) > 0 {
 		agentName = args[0]
 	}
-	if hookMode && strings.TrimSpace(agentName) == "" {
-		agentName = primeHookAgentFromWorkDir()
-	}
-
 	hookContext := primeHookContext{}
 	suppressHookPrompt := false
 	if hookMode {
@@ -203,6 +199,9 @@ func doPrimeWithHookFormat(args []string, stdout, stderr io.Writer, hookMode boo
 	}
 
 	cityName := loadedCityName(cfg, cityPath)
+	if hookMode && strings.TrimSpace(agentName) == "" {
+		agentName = primeHookAgentFromWorkDir(cfg)
+	}
 
 	// Look up agent in config. First try qualified identity resolution
 	// (handles "rig/agent" and rig-context matching), then fall back to
@@ -369,19 +368,40 @@ func primeHookSessionTemplate(cityPath string) string {
 	return strings.TrimSpace(sessionBead.Metadata["common_name"])
 }
 
-func primeHookAgentFromWorkDir() string {
+func primeHookAgentFromWorkDir(cfg *config.City) string {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return ""
 	}
-	clean := filepath.Clean(cwd)
+	candidates := primeHookAgentCandidatesFromPath(cwd)
+	if cfg != nil {
+		rigContext := currentRigContext(cfg)
+		for _, candidate := range candidates {
+			if a, ok := resolveAgentIdentity(cfg, candidate, rigContext); ok {
+				return a.QualifiedName()
+			}
+		}
+	}
+	if len(candidates) == 0 {
+		return ""
+	}
+	return candidates[len(candidates)-1]
+}
+
+func primeHookAgentCandidatesFromPath(path string) []string {
+	clean := filepath.Clean(path)
 	parts := strings.Split(clean, string(os.PathSeparator))
 	for i := 0; i+2 < len(parts); i++ {
 		if parts[i] == ".gc" && parts[i+1] == "agents" {
-			return parts[i+2]
+			remaining := parts[i+2:]
+			candidates := make([]string, 0, len(remaining))
+			for end := len(remaining); end >= 1; end-- {
+				candidates = append(candidates, strings.Join(remaining[:end], "/"))
+			}
+			return candidates
 		}
 	}
-	return ""
+	return nil
 }
 
 func prependHookBeacon(cityName, agentName, prompt string) string {

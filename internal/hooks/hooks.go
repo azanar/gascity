@@ -587,6 +587,15 @@ func isCodexManagedHookCommand(command string) bool {
 }
 
 func upgradeCodexHookCommand(command string) (string, bool) {
+	body := commandBodyAfterCanonicalPrefix(command)
+	if equalsLegacyCommandBody(body, `gc prime --hook`) ||
+		equalsLegacyCommandBody(body, `gc prime --hook --hook-format codex`) ||
+		equalsLegacyCommandBody(body, `GC_HOOK_EVENT_NAME=SessionStart gc prime --hook`) ||
+		equalsLegacyCommandBody(body, `GC_HOOK_EVENT_NAME=SessionStart gc prime --hook --hook-format codex`) ||
+		equalsLegacyCommandBody(body, sessionStartPreviousManagedFormBody) {
+		prefix := strings.TrimSuffix(command, body)
+		return prefix + sessionStartCurrentFormBody, true
+	}
 	if strings.Contains(command, `--hook-format codex`) {
 		return "", false
 	}
@@ -859,6 +868,7 @@ func isLegacyGCManagedCommand(event, command string) bool {
 	case "SessionStart":
 		return equalsLegacyCommandBody(body, "gc prime --hook") ||
 			equalsLegacyCommandBody(body, "gc prime --hook --hook-format codex") ||
+			equalsLegacyCommandBody(body, sessionStartPreviousManagedFormBody) ||
 			equalsLegacyCommandBody(body, sessionStartCurrentFormBody)
 	}
 	return false
@@ -873,6 +883,8 @@ func isLegacyGCManagedCommand(event, command string) bool {
 // with additional arguments, update this constant alongside the
 // emission site so legacy detection remains tight.
 const sessionStartCurrentFormBody = `GC_MANAGED_SESSION_HOOK=1 GC_HOOK_EVENT_NAME=SessionStart gc prime --hook --hook-format codex`
+
+const sessionStartPreviousManagedFormBody = `GC_MANAGED_SESSION_HOOK=1 GC_HOOK_EVENT_NAME=SessionStart gc prime --hook`
 
 // equalsLegacyCommandBody reports whether the command body is exactly the
 // legacy token. gc historically emitted these tokens as the complete
@@ -923,7 +935,8 @@ func upgradeClaudeHookCommand(event, command string) (string, bool) {
 		// GC_MANAGED_SESSION_HOOK / GC_HOOK_EVENT_NAME env vars the
 		// current managed form expects.
 		if equalsLegacyCommandBody(body, `gc prime --hook`) ||
-			equalsLegacyCommandBody(body, `gc prime --hook --hook-format codex`) {
+			equalsLegacyCommandBody(body, `gc prime --hook --hook-format codex`) ||
+			equalsLegacyCommandBody(body, sessionStartPreviousManagedFormBody) {
 			prefix := strings.TrimSuffix(command, body)
 			return prefix + sessionStartCurrentFormBody, true
 		}
