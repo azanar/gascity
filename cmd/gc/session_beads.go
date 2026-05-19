@@ -444,6 +444,10 @@ func reopenClosedConfiguredNamedSessionBead(
 			batch[session.PrimedAtMetadataKey] = ""
 			batch[session.PrimingAttemptedAtMetadataKey] = ""
 			batch[session.PromptHashMetadataKey] = ""
+			batch["sleep_reason"] = ""
+			batch["quarantined_until"] = ""
+			batch["held_until"] = ""
+			batch["wait_hold"] = ""
 		} else {
 			batch["pending_create_started_at"] = ""
 		}
