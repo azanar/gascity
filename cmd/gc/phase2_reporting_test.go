@@ -10,6 +10,7 @@ import (
 
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/runtime"
+	"github.com/gastownhall/gascity/internal/shellquote"
 	workertest "github.com/gastownhall/gascity/internal/worker/workertest"
 )
 
@@ -119,9 +120,9 @@ func startupRuntimeConfigMaterializationResult(tc phase2ProviderCase, tp Templat
 	case !startupNudgeMatches(tc, cfg.Nudge):
 		return workertest.Fail(tc.profileID, workertest.RequirementStartupRuntimeConfigMaterialization,
 			fmt.Sprintf("cfg.Nudge = %q, want startup nudge plus %q", cfg.Nudge, "nudge-"+tc.family)).WithEvidence(evidence)
-	case !reflect.DeepEqual(cfg.PreStart, []string{"echo pre-" + tc.family}):
+	case !reflect.DeepEqual(cfg.PreStart, phase2ExpectedPreStart(tc, cfg)):
 		return workertest.Fail(tc.profileID, workertest.RequirementStartupRuntimeConfigMaterialization,
-			fmt.Sprintf("cfg.PreStart = %v, want %v", cfg.PreStart, []string{"echo pre-" + tc.family})).WithEvidence(evidence)
+			fmt.Sprintf("cfg.PreStart = %v, want %v", cfg.PreStart, phase2ExpectedPreStart(tc, cfg))).WithEvidence(evidence)
 	case !reflect.DeepEqual(cfg.SessionSetup, []string{"echo setup-" + tc.family}):
 		return workertest.Fail(tc.profileID, workertest.RequirementStartupRuntimeConfigMaterialization,
 			fmt.Sprintf("cfg.SessionSetup = %v, want %v", cfg.SessionSetup, []string{"echo setup-" + tc.family})).WithEvidence(evidence)
@@ -138,6 +139,14 @@ func startupRuntimeConfigMaterializationResult(tc phase2ProviderCase, tp Templat
 		return workertest.Pass(tc.profileID, workertest.RequirementStartupRuntimeConfigMaterialization,
 			"templateParamsToConfig preserved the resolved startup materialization").WithEvidence(evidence)
 	}
+}
+
+func phase2ExpectedPreStart(tc phase2ProviderCase, cfg runtime.Config) []string {
+	preStart := []string{"echo pre-" + tc.family}
+	if tc.family == "codex" {
+		preStart = append(preStart, `"${GC_BIN:-gc}" internal codex-home --agent worker --workdir `+shellquote.Join([]string{cfg.WorkDir}))
+	}
+	return preStart
 }
 
 func phase2BoolPtrsEqual(a, b *bool) bool {

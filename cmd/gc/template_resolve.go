@@ -376,6 +376,12 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 		}
 	}
 
+	wsProvider := ""
+	if p.workspace != nil {
+		wsProvider = p.workspace.Provider
+	}
+	agentProviderFamily := effectiveAgentProviderFamily(cfgAgent, wsProvider, p.providers)
+
 	// Step 10: Merge environment layers. Workspace.Env sits between
 	// passthrough and provider so a per-provider/agent/patch entry can
 	// still override a workspace-wide default.
@@ -386,6 +392,9 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 	env := mergeEnv(passthroughEnv(), expandEnvMap(workspaceEnv), expandEnvMap(resolved.Env), expandEnvMap(cfgAgent.Env), agentEnv)
 	prependGCBinDirToPATH(env, env["GC_BIN"])
 	env = convergence.ScrubTokenEnv(env)
+	if agentProviderFamily == "codex" {
+		env["CODEX_HOME"] = codexHomePath(workDir)
+	}
 
 	// Step 11: Expand session setup templates.
 	configDir := p.cityPath
@@ -411,6 +420,9 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 	resolvedScript := config.ResolveSessionSetupScriptPath(p.cityPath, cfgAgent.SourceDir, cfgAgent.SessionSetupScript)
 	expandedPreStart := expandSessionSetup(cfgAgent.PreStart, setupCtx)
 	expandedLive := expandSessionSetup(cfgAgent.SessionLive, setupCtx)
+	if agentProviderFamily == "codex" && isStage2EligibleSession(p.sessionProvider, cfgAgent) {
+		expandedPreStart = appendCodexHomePreStart(expandedPreStart, qualifiedName, workDir, cfgAgent.EffectiveWakeMode() == "fresh")
+	}
 
 	// Step 11b: Skill materialization integration (per engdocs
 	// skill-materialization.md § "When FingerprintExtra[\"skills:*\"]
@@ -424,10 +436,6 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 	if isStage2EligibleSession(p.sessionProvider, cfgAgent) {
 		scopeRoot := agentScopeRoot(cfgAgent, p.cityPath, p.rigs)
 		canonWorkDir := canonicaliseFilePath(workDir, p.cityPath)
-		wsProvider := ""
-		if p.workspace != nil {
-			wsProvider = p.workspace.Provider
-		}
 		sharedCatalog := p.sharedSkillCatalogSnapshotForAgent(cfgAgent)
 		desired := effectiveSkillsForAgent(sharedCatalog, cfgAgent, wsProvider, p.providers, p.stderr)
 		if len(desired) > 0 {
