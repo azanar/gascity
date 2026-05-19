@@ -333,8 +333,17 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 		}
 	}
 
+	wsProvider := ""
+	if p.workspace != nil {
+		wsProvider = p.workspace.Provider
+	}
+	agentProviderFamily := effectiveAgentProviderFamily(cfgAgent, wsProvider, p.providers)
+
 	// Step 10: Merge environment layers.
 	env := convergence.ScrubTokenEnv(mergeEnv(passthroughEnv(), expandEnvMap(resolved.Env), expandEnvMap(cfgAgent.Env), agentEnv))
+	if agentProviderFamily == "codex" {
+		env["CODEX_HOME"] = codexHomePath(workDir)
+	}
 
 	// Step 11: Expand session setup templates.
 	configDir := p.cityPath
@@ -360,6 +369,9 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 	resolvedScript := resolveSetupScript(cfgAgent.SessionSetupScript, cfgAgent.SourceDir, p.cityPath)
 	expandedPreStart := expandSessionSetup(cfgAgent.PreStart, setupCtx)
 	expandedLive := expandSessionSetup(cfgAgent.SessionLive, setupCtx)
+	if agentProviderFamily == "codex" && isStage2EligibleSession(p.sessionProvider, cfgAgent) {
+		expandedPreStart = appendCodexHomePreStart(expandedPreStart, qualifiedName, workDir, cfgAgent.EffectiveWakeMode() == "fresh")
+	}
 
 	// Step 11b: Skill materialization integration (per engdocs
 	// skill-materialization.md § "When FingerprintExtra[\"skills:*\"]
@@ -373,10 +385,6 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 	if isStage2EligibleSession(p.sessionProvider, cfgAgent) {
 		scopeRoot := agentScopeRoot(cfgAgent, p.cityPath, p.rigs)
 		canonWorkDir := canonicaliseFilePath(workDir, p.cityPath)
-		wsProvider := ""
-		if p.workspace != nil {
-			wsProvider = p.workspace.Provider
-		}
 		sharedCatalog := p.sharedSkillCatalogSnapshotForAgent(cfgAgent)
 		desired := effectiveSkillsForAgent(sharedCatalog, cfgAgent, wsProvider, p.providers, p.stderr)
 		if len(desired) > 0 {

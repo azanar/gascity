@@ -24,6 +24,7 @@ func newInternalCmd(stdout, stderr io.Writer) *cobra.Command {
 		Short:  "Internal gc subcommands (not for direct human use)",
 		Hidden: true,
 	}
+	cmd.AddCommand(newInternalCodexHomeCmd(stdout, stderr))
 	cmd.AddCommand(newInternalMaterializeSkillsCmd(stdout, stderr))
 	cmd.AddCommand(newInternalProjectMCPCmd(stdout, stderr))
 	return cmd
