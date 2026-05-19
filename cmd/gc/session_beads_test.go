@@ -1153,6 +1153,10 @@ func TestReopenClosedConfiguredNamedSessionBeadClearsStaleStartMarkersWhenRecrea
 			"started_live_hash":          "old-live",
 			"live_hash":                  "old-runtime",
 			"startup_dialog_verified":    "true",
+			"sleep_reason":               "context-churn",
+			"quarantined_until":          now.Add(-5 * time.Minute).UTC().Format(time.RFC3339),
+			"held_until":                 now.Add(-4 * time.Minute).UTC().Format(time.RFC3339),
+			"wait_hold":                  "true",
 			namedSessionMetadataKey:      "true",
 			namedSessionIdentityMetadata: "mayor",
 			namedSessionModeMetadata:     "always",
@@ -1179,6 +1183,10 @@ func TestReopenClosedConfiguredNamedSessionBeadClearsStaleStartMarkersWhenRecrea
 		"started_live_hash",
 		"live_hash",
 		"startup_dialog_verified",
+		"sleep_reason",
+		"quarantined_until",
+		"held_until",
+		"wait_hold",
 	} {
 		if got := reopened.Metadata[key]; got != "" {
 			t.Fatalf("%s = %q, want empty on recreate", key, got)

@@ -364,6 +364,10 @@ func reopenClosedConfiguredNamedSessionBead(
 			batch["started_live_hash"] = ""
 			batch["live_hash"] = ""
 			batch["startup_dialog_verified"] = ""
+			batch["sleep_reason"] = ""
+			batch["quarantined_until"] = ""
+			batch["held_until"] = ""
+			batch["wait_hold"] = ""
 		} else {
 			batch["pending_create_started_at"] = ""
 		}
