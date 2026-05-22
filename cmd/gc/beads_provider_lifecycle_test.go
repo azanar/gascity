@@ -6171,6 +6171,9 @@ func TestGcBeadsBdStartUsesGCBinManagedConfigWriter(t *testing.T) {
 	if !strings.Contains(string(configData), "# rendered by fake gc") {
 		t.Fatalf("dolt-config.yaml was not rendered by GC_BIN:\n%s", string(configData))
 	}
+	if !strings.Contains(string(configData), "host: 127.0.0.1") {
+		t.Fatalf("dolt-config.yaml should bind managed local Dolt to loopback by default:\n%s", string(configData))
+	}
 	state, err := readDoltRuntimeStateFile(filepath.Join(cityPath, ".gc", "runtime", "packs", "dolt-from-gc", "dolt-provider-state.json"))
 	if err != nil {
 		t.Fatalf("readDoltRuntimeStateFile: %v", err)
@@ -6358,7 +6361,7 @@ func TestManagedDoltConfigGoWriterMatchesShellFallbackSemantics(t *testing.T) {
 		t.Fatal(err)
 	}
 	goConfigPath := filepath.Join(t.TempDir(), "go", "dolt-config.yaml")
-	if err := writeManagedDoltConfigFile(goConfigPath, "0.0.0.0", "3311", filepath.Join(cityPath, ".beads", "dolt"), "info"); err != nil {
+	if err := writeManagedDoltConfigFile(goConfigPath, "127.0.0.1", "3311", filepath.Join(cityPath, ".beads", "dolt"), "info"); err != nil {
 		t.Fatalf("writeManagedDoltConfigFile: %v", err)
 	}
 
@@ -7805,6 +7808,9 @@ func TestGcBeadsBdStartFallsBackToShellManagedConfigWriterWhenGCBinUnset(t *test
 	}
 	if strings.Contains(string(configData), "# rendered by fake gc") {
 		t.Fatalf("dolt-config.yaml should be rendered by shell fallback, not PATH gc:\n%s", string(configData))
+	}
+	if !strings.Contains(string(configData), "host: 127.0.0.1") {
+		t.Fatalf("dolt-config.yaml should bind managed local Dolt to loopback by default:\n%s", string(configData))
 	}
 	state, err := readDoltRuntimeStateFile(filepath.Join(cityPath, ".gc", "runtime", "packs", "dolt", "dolt-provider-state.json"))
 	if err != nil {
