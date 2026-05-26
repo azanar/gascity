@@ -2553,18 +2553,29 @@ func (a *Agent) AttachEnabled() bool {
 	return a.Attach == nil || *a.Attach
 }
 
-// bdReadyPoolDemandShell returns the bd ready predicate for unassigned,
-// non-epic pool demand routed to target. This is the one-source-of-truth for the
-// "is there work on this routed queue?" question that both the worker (via
-// EffectiveWorkQuery Tier 3) and the reconciler (via EffectivePoolDemandQuery,
-// count-form) ask. Diverging the two re-introduces the protocol-mismatch class;
-// see the "scale_check ↔ work_query correspondence" note in
+// bdReadyPoolDemandShell returns the shared bd ready predicate for
+// unassigned, non-epic pool demand routed to target. It checks the
+// metadata route first and falls back to pool:<target> labels for work
+// dispatched via label-only pool routing.
+//
+// This is the one-source-of-truth for the "is there work on this routed
+// queue?" question that both the worker (via EffectiveWorkQuery Tier 3)
+// and the reconciler (via EffectivePoolDemandQuery, count-form) ask.
+// Diverging the two re-introduces the protocol-mismatch class; see the
+// "scale_check ↔ work_query correspondence" note in
 // engdocs/architecture/dispatch.md.
 //
 // Callers append their own bd flags (--limit=1 for first-row work_query;
-// piped to jq 'length' for the count-form) and shell handling.
+// --limit 0 for the count-form) and shell handling.
 func bdReadyPoolDemandShell(target string) string {
-	return `bd ready --metadata-field gc.routed_to=` + target + ` --unassigned --exclude-type=epic --json`
+	return `sh -c 'r=$(bd ready --metadata-field gc.routed_to=` + target +
+		` --unassigned --exclude-type=epic --json "$@"); ` +
+		`if [ -n "$r" ] && [ "$r" != "[]" ]; then ` +
+		`printf "%s" "$r"; ` +
+		`else ` +
+		`bd ready --label pool:` + target +
+		` --unassigned --exclude-type=epic --json "$@"; ` +
+		`fi' --`
 }
 
 func (a *Agent) poolDemandTarget() string {

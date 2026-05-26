@@ -2088,6 +2088,9 @@ func TestEffectiveScaleCheckDefaults(t *testing.T) {
 	if !strings.Contains(check, "--unassigned") {
 		t.Errorf("EffectiveScaleCheck = %q, want --unassigned for new unassigned demand", check)
 	}
+	if !strings.Contains(check, "--label pool:refinery") {
+		t.Errorf("EffectiveScaleCheck = %q, want pool label fallback for refinery", check)
+	}
 	if !strings.Contains(check, "--exclude-type=epic") {
 		t.Errorf("EffectiveScaleCheck = %q, want --exclude-type=epic for executable demand only", check)
 	}

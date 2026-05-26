@@ -144,6 +144,49 @@ func TestEvaluatePoolDefaultScaleCheckCountsRoutedReadyWork(t *testing.T) {
 	}
 }
 
+func TestEvaluatePoolDefaultScaleCheckCountsPoolLabelReadyWork(t *testing.T) {
+	bdPath, err := findPreferredBinary("bd", "/home/ubuntu/.local/bin/bd")
+	if err != nil {
+		t.Skip("bd not installed")
+	}
+	jqPath, err := exec.LookPath("jq")
+	if err != nil {
+		t.Skip("jq not installed")
+	}
+	t.Setenv("PATH", filepath.Dir(bdPath)+":"+filepath.Dir(jqPath)+":"+os.Getenv("PATH"))
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "city.toml"), []byte("[workspace]\nname = \"test-city\"\n"), 0o644); err != nil {
+		t.Fatalf("write city.toml: %v", err)
+	}
+	runExternal(t, dir, bdPath, "init", "-p", "ct", "--skip-hooks", "-q")
+
+	agent := &config.Agent{
+		Name:              "worker",
+		MinActiveSessions: intPtr(0),
+		MaxActiveSessions: intPtr(3),
+	}
+
+	got, err := evaluatePool("worker", scaleParamsFor(agent), dir, nil, shellScaleCheck)
+	if err != nil {
+		t.Fatalf("evaluatePool without pooled label work: %v", err)
+	}
+	if got != 0 {
+		t.Fatalf("evaluatePool without pooled label work = %d, want 0", got)
+	}
+
+	runExternal(t, dir, bdPath, "create", "--json", "queued pooled worker job", "-t", "task",
+		"--labels", "pool:worker")
+
+	got, err = evaluatePool("worker", scaleParamsFor(agent), dir, nil, shellScaleCheck)
+	if err != nil {
+		t.Fatalf("evaluatePool with pooled label work: %v", err)
+	}
+	if got != 1 {
+		t.Fatalf("evaluatePool with pooled label work = %d, want 1", got)
+	}
+}
+
 func TestEvaluatePoolDefaultScaleCheckIgnoresRoutedActiveUnassignedWork(t *testing.T) {
 	skipSlowCmdGCTest(t, "uses real bd and jq for default scale_check coverage; run make test-cmd-gc-process for full coverage")
 	bdPath, err := findPreferredBinary("bd", "/home/ubuntu/.local/bin/bd")
