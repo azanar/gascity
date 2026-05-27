@@ -1962,7 +1962,7 @@ func reconcileSessionBeadsTracedWithNamedDemand(
 		eval.Policy = policy
 		name := target.session.Metadata["session_name"]
 		decision := awakeDecisions[name]
-		if decision.ShouldWake && !pendingInteractionReady(sp, name) && target.session.Metadata["pin_awake"] != "true" && configWakeSuppressed(*target.session, policy, sp, clk) {
+		if decision.ShouldWake && decision.Reason != "pending-create" && !pendingInteractionReady(sp, name) && target.session.Metadata["pin_awake"] != "true" && configWakeSuppressed(*target.session, policy, sp, clk) {
 			// Active demand (poolDesired > 0 or direct assigned work)
 			// overrides sleep suppression for non-interactive sessions
 			// (matching the old evaluateWakeReasons behavior). Interactive
