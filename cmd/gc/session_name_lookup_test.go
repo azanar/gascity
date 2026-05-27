@@ -539,13 +539,17 @@ func TestSessionNameLookupResolverReusesLoadedSnapshotAcrossLookups(t *testing.T
 	store := &countingSessionNameListStore{Store: base}
 
 	resolver := newSessionNameLookupResolver(store, "city", "")
+	loadCalls := store.listCalls
+	if loadCalls == 0 {
+		t.Fatal("newSessionNameLookupResolver did not load a session snapshot")
+	}
 	if got := resolver.Resolve("mayor"); got != "mayor" {
 		t.Fatalf("Resolve(mayor) = %q, want mayor", got)
 	}
 	if got := resolver.Resolve("worker"); got != "worker" {
 		t.Fatalf("Resolve(worker) = %q, want worker", got)
 	}
-	if store.listCalls != 1 {
-		t.Fatalf("store.List calls = %d, want 1", store.listCalls)
+	if store.listCalls != loadCalls {
+		t.Fatalf("store.List calls after Resolve = %d, want unchanged from initial load %d", store.listCalls, loadCalls)
 	}
 }
