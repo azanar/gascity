@@ -167,7 +167,7 @@ func (f *fakeStartOps) setRemainOnExit(name string) error {
 	return f.setRemainOnExitErr
 }
 
-func (f *fakeStartOps) capturePane(name string, lines int) (string, error) {
+func (f *fakeStartOps) capturePane(name string, _ int) (string, error) {
 	f.calls = append(f.calls, startCall{method: "capturePane", name: name})
 	return f.capturePaneText, f.capturePaneErr
 }
