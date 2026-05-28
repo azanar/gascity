@@ -1916,7 +1916,7 @@ func TestSendMailNotifyWithProviderStartsClaudePollerWhenQueueingRunningSession(
 	}
 }
 
-func TestSendMailNotifyWithWorkerStartsPollerBySessionIDForAliasedTarget(t *testing.T) {
+func TestSendMailNotifyWithWorkerStartsPollerByAliasForAliasedTarget(t *testing.T) {
 	t.Setenv("GC_BEADS", "file")
 	dir := t.TempDir()
 	store := openNudgeBeadStore(dir)
@@ -1945,7 +1945,9 @@ func TestSendMailNotifyWithWorkerStartsPollerBySessionIDForAliasedTarget(t *test
 	prev := startNudgePoller
 	startNudgePoller = func(cityPath, agentName, sessionName string) error {
 		called = true
-		if cityPath != dir || agentName != info.ID || sessionName != info.SessionName {
+		// The queued nudge carries the session fence, so the poller registration
+		// key can follow the operator-facing alias.
+		if cityPath != dir || agentName != "mayor" || sessionName != info.SessionName {
 			t.Fatalf("unexpected poller args city=%q agent=%q session=%q", cityPath, agentName, sessionName)
 		}
 		return nil
@@ -2235,7 +2237,7 @@ func TestCmdNudgeStatusJSON(t *testing.T) {
 	t.Setenv("GC_CITY", cityDir)
 
 	now := time.Now().Add(-time.Minute)
-	if err := enqueueQueuedNudge(cityDir, newQueuedNudge("mayor", "review queued work", "session", now)); err != nil {
+	if err := enqueueQueuedNudge(cityDir, newQueuedNudge("mayor", "review queued work", now)); err != nil {
 		t.Fatalf("enqueueQueuedNudge: %v", err)
 	}
 
@@ -2269,7 +2271,7 @@ func TestTryDeliverQueuedNudgesByPollerDeliversAndAcks(t *testing.T) {
 	t.Setenv("GC_BEADS", "file")
 	dir := t.TempDir()
 	now := time.Now().Add(-1 * time.Minute)
-	if err := enqueueQueuedNudge(dir, newQueuedNudge("worker", "review the deploy logs", "session", now)); err != nil {
+	if err := enqueueQueuedNudge(dir, newQueuedNudge("worker", "review the deploy logs", now)); err != nil {
 		t.Fatalf("enqueueQueuedNudge: %v", err)
 	}
 
@@ -2338,7 +2340,7 @@ func TestTryDeliverQueuedNudgesByPollerLeavesACPDeliveryUnwrapped(t *testing.T) 
 	t.Setenv("GC_BEADS", "file")
 	dir := t.TempDir()
 	now := time.Now().Add(-1 * time.Minute)
-	if err := enqueueQueuedNudge(dir, newQueuedNudge("worker", "check hook output", "session", now)); err != nil {
+	if err := enqueueQueuedNudge(dir, newQueuedNudge("worker", "check hook output", now)); err != nil {
 		t.Fatalf("enqueueQueuedNudge: %v", err)
 	}
 
@@ -2387,7 +2389,7 @@ func TestTryDeliverQueuedNudgesByPollerKeepsACPProviderMissRecoverable(t *testin
 	t.Setenv("GC_BEADS", "file")
 	dir := t.TempDir()
 	now := time.Now().Add(-1 * time.Minute)
-	if err := enqueueQueuedNudge(dir, newQueuedNudge("worker", "check hook output", "session", now)); err != nil {
+	if err := enqueueQueuedNudge(dir, newQueuedNudge("worker", "check hook output", now)); err != nil {
 		t.Fatalf("enqueueQueuedNudge: %v", err)
 	}
 
@@ -2632,7 +2634,7 @@ func assertSessionLastNudgeDeliveredAtStamped(t *testing.T, store beads.Store, s
 func TestClaimDueQueuedNudgesClaimsOnceUntilAck(t *testing.T) {
 	t.Setenv("GC_BEADS", "file")
 	dir := t.TempDir()
-	item := newQueuedNudge("worker", "finish the audit", "session", time.Now().Add(-time.Minute))
+	item := newQueuedNudge("worker", "finish the audit", time.Now().Add(-time.Minute))
 	if err := enqueueQueuedNudge(dir, item); err != nil {
 		t.Fatalf("enqueueQueuedNudge: %v", err)
 	}
@@ -2795,7 +2797,7 @@ func TestClaimDueQueuedNudgesForTargetClaimsSameSessionStaleEpoch(t *testing.T) 
 func TestRecordQueuedNudgeFailureRequeuesClaimedNudge(t *testing.T) {
 	t.Setenv("GC_BEADS", "file")
 	dir := t.TempDir()
-	item := newQueuedNudge("worker", "retry me", "session", time.Now().Add(-time.Minute))
+	item := newQueuedNudge("worker", "retry me", time.Now().Add(-time.Minute))
 	if err := enqueueQueuedNudge(dir, item); err != nil {
 		t.Fatalf("enqueueQueuedNudge: %v", err)
 	}
@@ -2833,7 +2835,7 @@ func TestRecordQueuedNudgeFailureRequeuesClaimedNudge(t *testing.T) {
 func TestQueuedNudgeFailureMovesToDeadLetter(t *testing.T) {
 	t.Setenv("GC_BEADS", "file")
 	dir := t.TempDir()
-	item := newQueuedNudge("worker", "stuck reminder", "session", time.Now().Add(-time.Hour))
+	item := newQueuedNudge("worker", "stuck reminder", time.Now().Add(-time.Hour))
 	if err := enqueueQueuedNudge(dir, item); err != nil {
 		t.Fatalf("enqueueQueuedNudge: %v", err)
 	}

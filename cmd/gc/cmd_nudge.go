@@ -39,7 +39,7 @@ const (
 	// A controller wake can legitimately take a couple of minutes when the
 	// session has to rematerialize a worktree and complete startup dialog.
 	defaultNudgePollStartGrace  = 5 * time.Minute
-	defaultNudgeWaitIdleTimeout     = 30 * time.Second
+	defaultNudgeWaitIdleTimeout = 30 * time.Second
 )
 
 var errNudgeSessionFenceMismatch = errors.New("queued nudge session fence mismatch")
@@ -675,7 +675,16 @@ func requestManagedNudgeWake(target nudgeTarget, store beads.Store) error {
 
 func workerHandleForNudgeTarget(target nudgeTarget, store beads.Store, sp runtime.Provider) (worker.Handle, error) {
 	if target.sessionName != "" {
-		return runtimeWorkerHandleWithConfig(
+		if target.sessionID != "" {
+			obs, err := workerObserveSessionTargetWithConfig(target.cityPath, store, sp, target.cfg, target.sessionName)
+			if err == nil && !obs.Running {
+				return workerHandleForSessionWithConfig(target.cityPath, store, sp, target.cfg, target.sessionID)
+			}
+			if err != nil && !errors.Is(err, runtime.ErrSessionNotFound) && !errors.Is(err, session.ErrSessionNotFound) {
+				return nil, err
+			}
+		}
+		handle, err := runtimeWorkerHandleWithConfig(
 			target.cityPath,
 			store,
 			sp,
@@ -685,6 +694,12 @@ func workerHandleForNudgeTarget(target nudgeTarget, store beads.Store, sp runtim
 			strings.TrimSpace(target.sessionTransport()),
 			nil,
 		)
+		if err == nil {
+			return handle, nil
+		}
+		if target.sessionID == "" || !errors.Is(err, runtime.ErrSessionNotFound) {
+			return nil, err
+		}
 	}
 	if target.sessionID != "" {
 		return workerHandleForSessionWithConfig(target.cityPath, store, sp, target.cfg, target.sessionID)
@@ -1242,8 +1257,8 @@ func deadReason(item queuedNudge) string {
 	return "dead-letter"
 }
 
-func newQueuedNudge(agentName, message, source string, now time.Time) queuedNudge {
-	return newQueuedNudgeWithOptions(agentName, message, source, now, queuedNudgeOptions{})
+func newQueuedNudge(agentName, message string, now time.Time) queuedNudge {
+	return newQueuedNudgeWithOptions(agentName, message, "session", now, queuedNudgeOptions{})
 }
 
 func newQueuedNudgeWithOptions(agentName, message, source string, now time.Time, opts queuedNudgeOptions) queuedNudge {
