@@ -689,6 +689,17 @@ func TestLifecycleDisplayReasonUsesOnlyActiveLifecycleReasons(t *testing.T) {
 			want: "startup-failure",
 		},
 		{
+			name: "always named startup wake failure quarantine is explicit",
+			meta: map[string]string{
+				"state":                 "asleep",
+				"configured_named_mode": "always",
+				"sleep_reason":          "quarantine",
+				"wake_attempts":         "5",
+				"quarantined_until":     future,
+			},
+			want: "startup-failure",
+		},
+		{
 			name: "expired rate-limit reason is not visible",
 			meta: map[string]string{
 				"sleep_reason":      "rate_limit",

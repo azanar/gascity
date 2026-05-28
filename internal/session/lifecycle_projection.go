@@ -311,9 +311,13 @@ func lifecycleDisplayReasonFromView(view LifecycleView, metadata map[string]stri
 }
 
 func lifecycleStartupFailureReasonVisible(view LifecycleView, metadata map[string]string, reason string) bool {
-	return reason == "context-churn" &&
-		view.HasBlocker(BlockerQuarantined) &&
-		strings.TrimSpace(metadata[NamedSessionModeMetadata]) == "always"
+	if !view.HasBlocker(BlockerQuarantined) || strings.TrimSpace(metadata[NamedSessionModeMetadata]) != "always" {
+		return false
+	}
+	if reason == "context-churn" {
+		return true
+	}
+	return reason == "quarantine" && strings.TrimSpace(metadata["wake_attempts"]) != "" && strings.TrimSpace(metadata["wake_attempts"]) != "0"
 }
 
 func lifecycleResetPendingReasonVisible(view LifecycleView, metadata map[string]string, sessionName string, isRunning func(string) bool) bool {
