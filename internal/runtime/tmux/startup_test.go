@@ -312,6 +312,7 @@ func TestDoStartSession_FullSequence(t *testing.T) {
 		"waitForReady",
 		"acceptStartupDialogs",
 		"hasSession",
+		"isSessionRunning",
 	})
 
 	// Verify createSession got full config.
@@ -528,9 +529,11 @@ func TestDoStartSession_SessionDiesDuringStartup(t *testing.T) {
 }
 
 func TestDoStartSession_ReadyDeadlineWithDeadPaneReportsProviderCrash(t *testing.T) {
+	running := false
 	ops := &fakeStartOps{
-		waitReadyErr:     context.DeadlineExceeded,
-		hasSessionResult: false,
+		waitReadyErr:           context.DeadlineExceeded,
+		hasSessionResult:       true,
+		isSessionRunningResult: &running,
 		capturePaneText: "WARNING: proceeding, even though we could not update PATH: Operation not permitted (os error 1)\n" +
 			"Error: Operation not permitted (os error 1)\n" +
 			"Pane is dead",
@@ -564,6 +567,7 @@ func TestDoStartSession_ReadyDeadlineWithDeadPaneReportsProviderCrash(t *testing
 		"acceptStartupDialogs",
 		"waitForReady",
 		"hasSession",
+		"isSessionRunning",
 		"capturePane",
 	})
 }
@@ -615,6 +619,7 @@ func TestDoStartSession_ProcessNamesOnly(t *testing.T) {
 		"acceptStartupDialogs",
 		"acceptStartupDialogs",
 		"hasSession",
+		"isSessionRunning",
 	})
 
 	// Verify isRuntimeRunning sees the process names in zombie detection path.
@@ -645,6 +650,7 @@ func TestDoStartSession_KimiSkipsStartupDialogAcceptance(t *testing.T) {
 		"waitForCommand",
 		"waitForReady",
 		"hasSession",
+		"isSessionRunning",
 	})
 }
 
@@ -674,6 +680,7 @@ func TestDoStartSessionReturnsNudgeDeliveryError(t *testing.T) {
 		"createSession",
 		"setRemainOnExit",
 		"hasSession",
+		"isSessionRunning",
 		"sendKeys",
 	})
 }
@@ -699,6 +706,7 @@ func TestDoStartSession_AcceptStartupDialogsOnly(t *testing.T) {
 		"acceptStartupDialogs",
 		"acceptStartupDialogs",
 		"hasSession",
+		"isSessionRunning",
 	})
 }
 
@@ -779,6 +787,7 @@ func TestDoStartSession_ReadyPromptPrefixOnly(t *testing.T) {
 		"setRemainOnExit",
 		"waitForReady",
 		"hasSession",
+		"isSessionRunning",
 	})
 
 	// Verify RuntimeConfig carries the prefix.
@@ -808,6 +817,7 @@ func TestDoStartSession_ReadyDelayOnly(t *testing.T) {
 		"setRemainOnExit",
 		"waitForReady",
 		"hasSession",
+		"isSessionRunning",
 	})
 
 	// Verify RuntimeConfig carries the delay.
@@ -848,6 +858,7 @@ func TestDoStartSession_TreatsDeadlineAfterReadyAsSuccessWhenSessionAlive(t *tes
 		"acceptStartupDialogs",
 		"waitForReady",
 		"hasSession",
+		"isSessionRunning",
 	})
 }
 
@@ -887,6 +898,7 @@ func TestDoStartSession_TreatsDeadlineAfterPostReadyAsSuccessWhenSessionAlive(t 
 		"waitForReady",
 		"acceptStartupDialogs",
 		"hasSession",
+		"isSessionRunning",
 	})
 }
 
@@ -913,6 +925,7 @@ func TestDoStartSession_EmitsPermissionWarningOnly(t *testing.T) {
 		"acceptStartupDialogs",
 		"acceptStartupDialogs",
 		"hasSession",
+		"isSessionRunning",
 	})
 }
 
@@ -941,6 +954,7 @@ func TestDoStartSession_ProcessNamesAndReadyPrefix(t *testing.T) {
 		"waitForReady",
 		"acceptStartupDialogs",
 		"hasSession",
+		"isSessionRunning",
 	})
 }
 
@@ -969,6 +983,7 @@ func TestDoStartSession_CursorReadinessHintsTriggerRuntimeWait(t *testing.T) {
 		"waitForReady",
 		"acceptStartupDialogs",
 		"hasSession",
+		"isSessionRunning",
 	})
 
 	wfr := ops.calls[4]
@@ -1007,6 +1022,7 @@ func TestDoStartSession_ProcessNamesAndReadyDelayRechecksDialogs(t *testing.T) {
 		"waitForReady",
 		"acceptStartupDialogs",
 		"hasSession",
+		"isSessionRunning",
 	})
 }
 
@@ -1121,16 +1137,17 @@ func TestDoStartSession_SessionSetupRunsAfterAlive(t *testing.T) {
 		"acceptStartupDialogs",
 		"acceptStartupDialogs",
 		"hasSession",
+		"isSessionRunning",
 		"runSetupCommand",
 		"runSetupCommand",
 	})
 
 	// Verify both commands were recorded.
-	cmd1 := ops.calls[6]
+	cmd1 := ops.calls[7]
 	if cmd1.command != "tmux set-option -t test status-style 'bg=blue'" {
 		t.Errorf("setup cmd[0] = %q, want status-style command", cmd1.command)
 	}
-	cmd2 := ops.calls[7]
+	cmd2 := ops.calls[8]
 	if cmd2.command != "tmux set-option -t test mouse on" {
 		t.Errorf("setup cmd[1] = %q, want mouse command", cmd2.command)
 	}
@@ -1167,22 +1184,23 @@ func TestDoStartSession_SessionSetupScriptRunsAfterCommands(t *testing.T) {
 		"acceptStartupDialogs",
 		"acceptStartupDialogs",
 		"hasSession",
+		"isSessionRunning",
 		"runSetupCommand",
 		"runSetupCommand",
 		"sendKeys",
 	})
 
 	// First runSetupCommand = inline command.
-	if ops.calls[6].command != "tmux set mouse on" {
-		t.Errorf("setup[0] = %q, want inline command", ops.calls[6].command)
+	if ops.calls[7].command != "tmux set mouse on" {
+		t.Errorf("setup[0] = %q, want inline command", ops.calls[7].command)
 	}
 	// Second runSetupCommand = script.
-	if ops.calls[7].command != "/city/scripts/setup.sh" {
-		t.Errorf("setup[1] = %q, want script", ops.calls[7].command)
+	if ops.calls[8].command != "/city/scripts/setup.sh" {
+		t.Errorf("setup[1] = %q, want script", ops.calls[8].command)
 	}
 	// sendKeys = nudge.
-	if ops.calls[8].command != "start working" {
-		t.Errorf("nudge = %q, want %q", ops.calls[8].command, "start working")
+	if ops.calls[9].command != "start working" {
+		t.Errorf("nudge = %q, want %q", ops.calls[9].command, "start working")
 	}
 }
 
@@ -1311,7 +1329,7 @@ func TestDoStartSession_PreStartRunsBeforeCreate(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	assertCallSequence(t, ops, []string{"runSetupCommand", "createSession", "setRemainOnExit", "hasSession"})
+	assertCallSequence(t, ops, []string{"runSetupCommand", "createSession", "setRemainOnExit", "hasSession", "isSessionRunning"})
 
 	pre := ops.calls[0]
 	if pre.command != "setup-worktree" {

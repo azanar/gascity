@@ -777,8 +777,11 @@ func ignoreDeadlineIfSessionAlive(ops startOps, name string, err error) error {
 	if hasErr != nil {
 		return fmt.Errorf("verifying session after ready deadline: %w", hasErr)
 	}
-	if alive {
+	if alive && ops.isSessionRunning(name) {
 		return nil
+	}
+	if alive {
+		return startupDeadSessionError(ops, name)
 	}
 	return err
 }
@@ -800,10 +803,13 @@ func failIfSessionDiedDuringStartupProbe(ops startOps, name string) error {
 	if err != nil {
 		return fmt.Errorf("verifying session after startup probe: %w", err)
 	}
-	if alive {
+	if alive && ops.isSessionRunning(name) {
 		return nil
 	}
-	return startupDeadSessionError(ops, name)
+	if alive {
+		return startupDeadSessionError(ops, name)
+	}
+	return nil
 }
 
 // doStartSession is the pure startup orchestration logic.
@@ -897,7 +903,7 @@ func doStartSession(ctx context.Context, ops startOps, name string, cfg runtime.
 	if err != nil {
 		return fmt.Errorf("verifying session: %w", err)
 	}
-	if !alive {
+	if !alive || !ops.isSessionRunning(name) {
 		return startupDeadSessionError(ops, name)
 	}
 
