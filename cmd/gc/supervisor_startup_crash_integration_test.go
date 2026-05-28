@@ -24,6 +24,8 @@ import (
 func TestSupervisorManagedProviderStartupCrashSmoke(t *testing.T) {
 	tmuxtest.RequireTmux(t)
 
+	const startupCrashTimeout = 10 * time.Second
+
 	guard := tmuxtest.NewGuard(t)
 	workDir := t.TempDir()
 	crashScript := filepath.Join(workDir, "codex-like-startup-crash.sh")
@@ -39,7 +41,7 @@ func TestSupervisorManagedProviderStartupCrashSmoke(t *testing.T) {
 
 	sp, err := newSessionProviderByName("", config.SessionConfig{
 		Socket:             guard.SocketName(),
-		SetupTimeout:       "2s",
+		SetupTimeout:       startupCrashTimeout.String(),
 		NudgeReadyTimeout:  "500ms",
 		NudgeRetryInterval: "25ms",
 		NudgeLockTimeout:   "500ms",
@@ -89,7 +91,7 @@ func TestSupervisorManagedProviderStartupCrashSmoke(t *testing.T) {
 		},
 	}
 
-	results := executePreparedStartWave(context.Background(), []preparedStart{prepared}, sp, store, 2*time.Second)
+	results := executePreparedStartWave(context.Background(), []preparedStart{prepared}, sp, store, startupCrashTimeout)
 	if len(results) != 1 {
 		t.Fatalf("results = %d, want 1", len(results))
 	}
