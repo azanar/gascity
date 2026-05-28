@@ -660,6 +660,7 @@ type startOps interface {
 	acceptStartupDialogs(ctx context.Context, name string) error
 	waitForReady(ctx context.Context, name string, rc *RuntimeConfig, timeout time.Duration) error
 	hasSession(name string) (bool, error)
+	capturePane(name string, lines int) (string, error)
 	sendKeys(name, text string) error
 	setRemainOnExit(name string) error
 	runSetupCommand(ctx context.Context, cmd string, env map[string]string, timeout time.Duration) error
@@ -720,6 +721,10 @@ func (o *tmuxStartOps) hasSession(name string) (bool, error) {
 	return o.tm.HasSession(name)
 }
 
+func (o *tmuxStartOps) capturePane(name string, lines int) (string, error) {
+	return o.tm.CapturePane(name, lines)
+}
+
 func (o *tmuxStartOps) sendKeys(name, text string) error {
 	return o.tm.NudgeSession(name, text)
 }
@@ -776,6 +781,29 @@ func ignoreDeadlineIfSessionAlive(ops startOps, name string, err error) error {
 		return nil
 	}
 	return err
+}
+
+func startupDeadSessionError(ops startOps, name string) error {
+	pane, err := ops.capturePane(name, 80)
+	if err != nil {
+		return fmt.Errorf("%w: session %q", runtime.ErrSessionDiedDuringStartup, name)
+	}
+	pane = strings.TrimSpace(pane)
+	if pane == "" {
+		return fmt.Errorf("%w: session %q", runtime.ErrSessionDiedDuringStartup, name)
+	}
+	return fmt.Errorf("%w: session %q; last pane output:\n%s", runtime.ErrSessionDiedDuringStartup, name, pane)
+}
+
+func failIfSessionDiedDuringStartupProbe(ops startOps, name string) error {
+	alive, err := ops.hasSession(name)
+	if err != nil {
+		return fmt.Errorf("verifying session after startup probe: %w", err)
+	}
+	if alive {
+		return nil
+	}
+	return startupDeadSessionError(ops, name)
 }
 
 // doStartSession is the pure startup orchestration logic.
@@ -844,7 +872,11 @@ func doStartSession(ctx context.Context, ops startOps, name string, cfg runtime.
 			ReadyDelayMs:      cfg.ReadyDelayMs,
 			ProcessNames:      cfg.ProcessNames,
 		}}
-		_ = ops.waitForReady(ctx, name, rc, startupReadyProbeTimeout(cfg)) // best-effort
+		if err := ops.waitForReady(ctx, name, rc, startupReadyProbeTimeout(cfg)); err != nil {
+			if deadErr := failIfSessionDiedDuringStartupProbe(ops, name); deadErr != nil {
+				return deadErr
+			}
+		}
 		if err := ctx.Err(); err != nil {
 			return ignoreDeadlineIfSessionAlive(ops, name, err)
 		}
@@ -866,7 +898,7 @@ func doStartSession(ctx context.Context, ops startOps, name string, cfg runtime.
 		return fmt.Errorf("verifying session: %w", err)
 	}
 	if !alive {
-		return fmt.Errorf("%w: session %q", runtime.ErrSessionDiedDuringStartup, name)
+		return startupDeadSessionError(ops, name)
 	}
 
 	// Step 5.5: Run session setup commands and script.
