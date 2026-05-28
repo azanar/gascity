@@ -33,6 +33,7 @@ func TestSupervisorManagedProviderStartupCrashSmoke(t *testing.T) {
 		"#!/bin/sh",
 		"printf '%s\\n' 'WARNING: proceeding, even though we could not update PATH: Operation not permitted (os error 1)' >&2",
 		"printf '%s\\n' 'Error: Operation not permitted (os error 1)' >&2",
+		"sleep 1",
 		"exit 1",
 		"",
 	}, "\n")), 0o755); err != nil {
