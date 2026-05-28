@@ -225,6 +225,8 @@ const (
 	SessionCircuitStateOpen = "CIRCUIT_OPEN"
 	// SessionCircuitStateClosed is the durable metadata value for a closed session circuit breaker.
 	SessionCircuitStateClosed = "CIRCUIT_CLOSED"
+
+	lifecycleStartupFailureReason = "startup-failure"
 )
 
 // LifecycleDisplayReason returns the user-facing reason for a non-closed
@@ -289,6 +291,9 @@ func lifecycleDisplayReasonFromView(view LifecycleView, metadata map[string]stri
 		staleTimedHold := reason == "user-hold" &&
 			strings.TrimSpace(metadata["held_until"]) != "" &&
 			!view.HasBlocker(BlockerHeld)
+		if !staleTimedQuarantine && lifecycleStartupFailureReasonVisible(view, metadata, reason) {
+			return lifecycleStartupFailureReason
+		}
 		if !staleTimedQuarantine && !staleTimedHold {
 			return reason
 		}
@@ -303,6 +308,12 @@ func lifecycleDisplayReasonFromView(view LifecycleView, metadata map[string]stri
 		return "user-hold"
 	}
 	return ""
+}
+
+func lifecycleStartupFailureReasonVisible(view LifecycleView, metadata map[string]string, reason string) bool {
+	return reason == "context-churn" &&
+		view.HasBlocker(BlockerQuarantined) &&
+		strings.TrimSpace(metadata[NamedSessionModeMetadata]) == "always"
 }
 
 func lifecycleResetPendingReasonVisible(view LifecycleView, metadata map[string]string, sessionName string, isRunning func(string) bool) bool {
