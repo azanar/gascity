@@ -631,16 +631,19 @@ func (p *Provider) CopyTo(name, src, relDst string) error {
 }
 
 // Attach connects the user's terminal to the named tmux session.
-// This hands stdin/stdout/stderr to tmux and blocks until detach.
+// It returns [runtime.ErrSessionNotFound] when the session is absent and
+// refuses to attach to tmux remain-on-exit dead panes with a tmux-specific
+// message-only error. Pane-state query failures fall through to tmux attach.
 func (p *Provider) Attach(name string) error {
-	if !p.tm.IsSessionRunning(name) {
-		has, err := p.tm.HasSession(name)
-		if err != nil {
-			return fmt.Errorf("checking tmux session before attach: %w", err)
-		}
-		if !has {
-			return fmt.Errorf("%w: %s", ErrSessionNotFound, name)
-		}
+	has, err := p.tm.HasSession(name)
+	if err != nil {
+		return fmt.Errorf("checking tmux session before attach: %w", err)
+	}
+	if !has {
+		return fmt.Errorf("%w: %w: %s", runtime.ErrSessionNotFound, ErrSessionNotFound, name)
+	}
+	dead, err := p.tm.IsPaneDead(name)
+	if err == nil && dead {
 		return fmt.Errorf("refusing to attach to dead pane for session %q", name)
 	}
 	args := []string{"-u"}
