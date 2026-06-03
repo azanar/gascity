@@ -478,25 +478,31 @@ func Instantiate(ctx context.Context, store beads.Store, recipe *formula.Recipe,
 			if err == nil {
 				return result, nil
 			}
-			if !isTransientGraphApplyError(err) {
+			if isUnsupportedGraphApplyError(err) {
+				graphApplyTracef("graph-apply unsupported fallback recipe=%s err=%v", recipe.Name, err)
+			} else if !isTransientGraphApplyError(err) {
 				return nil, err
+			} else {
+				graphApplyTracef("graph-apply transient-error retry recipe=%s err=%v", recipe.Name, err)
+				timer := time.NewTimer(graphApplyTransientRetryDelay)
+				defer timer.Stop()
+				select {
+				case <-timer.C:
+				case <-ctx.Done():
+					return nil, fmt.Errorf("retrying graph apply for recipe %q: %w", recipe.Name, ctx.Err())
+				}
+				result, retryErr := instantiateViaGraphApply(ctx, applier, recipe, opts)
+				if retryErr == nil {
+					return result, nil
+				}
+				if isUnsupportedGraphApplyError(retryErr) {
+					graphApplyTracef("graph-apply unsupported fallback recipe=%s first_err=%v retry_err=%v", recipe.Name, err, retryErr)
+				} else if !isTransientGraphApplyError(retryErr) {
+					return nil, retryErr
+				} else {
+					graphApplyTracef("graph-apply transient-error fallback recipe=%s first_err=%v retry_err=%v", recipe.Name, err, retryErr)
+				}
 			}
-			graphApplyTracef("graph-apply transient-error retry recipe=%s err=%v", recipe.Name, err)
-			timer := time.NewTimer(graphApplyTransientRetryDelay)
-			defer timer.Stop()
-			select {
-			case <-timer.C:
-			case <-ctx.Done():
-				return nil, fmt.Errorf("retrying graph apply for recipe %q: %w", recipe.Name, ctx.Err())
-			}
-			result, retryErr := instantiateViaGraphApply(ctx, applier, recipe, opts)
-			if retryErr == nil {
-				return result, nil
-			}
-			if !isTransientGraphApplyError(retryErr) {
-				return nil, retryErr
-			}
-			graphApplyTracef("graph-apply transient-error fallback recipe=%s first_err=%v retry_err=%v", recipe.Name, err, retryErr)
 		} else {
 			graphApplyTracef("graph-apply unavailable recipe=%s store=%T", recipe.Name, store)
 		}
@@ -784,7 +790,14 @@ func InstantiateFragment(ctx context.Context, store beads.Store, recipe *formula
 	if IsGraphApplyEnabled() {
 		if applier, ok := beads.GraphApplyFor(store); ok {
 			opts.PriorityOverride = priorityOverride
-			return instantiateFragmentViaGraphApply(ctx, store, applier, recipe, opts)
+			result, err := instantiateFragmentViaGraphApply(ctx, store, applier, recipe, opts)
+			if err == nil {
+				return result, nil
+			}
+			if !isUnsupportedGraphApplyError(err) {
+				return nil, err
+			}
+			graphApplyTracef("graph-apply fragment-unsupported fallback root=%s err=%v", opts.RootID, err)
 		}
 		graphApplyTracef("graph-apply fragment-unavailable root=%s store=%T", opts.RootID, store)
 	}
