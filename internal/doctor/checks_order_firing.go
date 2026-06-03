@@ -23,6 +23,9 @@ const (
 // OrderFiringCurrentLastRunFunc reports the newest persisted run time for an order.
 type OrderFiringCurrentLastRunFunc func(order orders.Order) (time.Time, error)
 
+// OrderFiringCurrentOpenRunFunc reports whether an order currently has an open run.
+type OrderFiringCurrentOpenRunFunc func(order orders.Order) (bool, error)
+
 // OrderFiringCurrentOption configures the scheduled-order freshness check.
 type OrderFiringCurrentOption func(*OrderFiringCurrentCheck)
 
@@ -34,12 +37,21 @@ func WithOrderFiringCurrentLastRunFunc(fn OrderFiringCurrentLastRunFunc) OrderFi
 	}
 }
 
+// WithOrderFiringCurrentOpenRunFunc lets callers provide the same open
+// order-run source used by the dispatcher to suppress duplicate firings.
+func WithOrderFiringCurrentOpenRunFunc(fn OrderFiringCurrentOpenRunFunc) OrderFiringCurrentOption {
+	return func(c *OrderFiringCurrentCheck) {
+		c.openRun = fn
+	}
+}
+
 // OrderFiringCurrentCheck reports scheduled orders whose last firing is stale.
 type OrderFiringCurrentCheck struct {
 	cfg      *config.City
 	cityPath string
 	clock    func() time.Time
 	lastRun  OrderFiringCurrentLastRunFunc
+	openRun  OrderFiringCurrentOpenRunFunc
 }
 
 // NewOrderFiringCurrentCheck creates a check for cron and cooldown order freshness.
@@ -145,7 +157,17 @@ func (c *OrderFiringCurrentCheck) Run(ctx *CheckContext) *CheckResult {
 			blockingErrors++
 			continue
 		}
-		status, severity, detail := classifyOrderFiring(order, now, expected, lastFired, startedAt)
+		openRun, err := c.hasOpenOrderRun(order)
+		if err != nil {
+			worst = worseStatus(worst, StatusError)
+			result.Details = append(result.Details, fmt.Sprintf("%s: cannot read open order-run state: %v", orderDisplayName(order), err))
+			if firstNonOK == "" {
+				firstNonOK = orderHistoryHintTarget(order)
+			}
+			blockingErrors++
+			continue
+		}
+		status, severity, detail := classifyOrderFiring(order, now, expected, lastFired, startedAt, openRun)
 		worst = worseStatus(worst, status)
 		result.Details = append(result.Details, detail)
 		if status != StatusOK {
@@ -548,6 +570,13 @@ func (c *OrderFiringCurrentCheck) latestOrderFiredAt(evts []events.Event, order 
 	return latest, nil
 }
 
+func (c *OrderFiringCurrentCheck) hasOpenOrderRun(order orders.Order) (bool, error) {
+	if c.openRun == nil {
+		return false, nil
+	}
+	return c.openRun(order)
+}
+
 func latestOrderFiredAt(evts []events.Event, subject string) time.Time {
 	var latest time.Time
 	for _, event := range evts {
@@ -561,8 +590,15 @@ func latestOrderFiredAt(evts []events.Event, subject string) time.Time {
 	return latest
 }
 
-func classifyOrderFiring(order orders.Order, now time.Time, expected time.Duration, lastFired, controllerStarted time.Time) (CheckStatus, CheckSeverity, string) {
+func classifyOrderFiring(order orders.Order, now time.Time, expected time.Duration, lastFired, controllerStarted time.Time, openRun bool) (CheckStatus, CheckSeverity, string) {
 	name := orderDisplayName(order)
+	if openRun {
+		if lastFired.IsZero() {
+			return StatusOK, SeverityBlocking, fmt.Sprintf("%s: order run in flight (run start unknown)", name)
+		}
+		age := nonNegativeDuration(now.Sub(lastFired))
+		return StatusOK, SeverityBlocking, fmt.Sprintf("%s: order run in flight for %s, expected every %s", name, formatOrderFiringDuration(age), formatOrderFiringDuration(expected))
+	}
 	if lastFired.IsZero() {
 		if controllerStarted.IsZero() {
 			return StatusOK, SeverityBlocking, fmt.Sprintf("%s: never fired (controller start unknown)", name)
