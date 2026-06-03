@@ -16,8 +16,9 @@ import (
 )
 
 const (
-	orderFiringCurrentName    = "order-firing-current"
-	orderFiringInspectHintFmt = "Inspect with: gc order check && gc order history %s"
+	orderFiringCurrentName             = "order-firing-current"
+	orderFiringInspectHintFmt          = "Inspect with: gc order check && gc order history %s"
+	orderFiringCriticalStaleGraceFloor = 5 * time.Minute
 )
 
 // OrderFiringCurrentLastRunFunc reports the newest persisted run time for an order.
@@ -618,8 +619,12 @@ func classifyOrderFiring(order orders.Order, now time.Time, expected time.Durati
 	}
 
 	age := nonNegativeDuration(now.Sub(lastFired))
+	staleThreshold := expected * 3
+	if staleThreshold < orderFiringCriticalStaleGraceFloor {
+		staleThreshold = orderFiringCriticalStaleGraceFloor
+	}
 	switch {
-	case age >= expected*3:
+	case age >= staleThreshold:
 		return StatusError, SeverityBlocking, fmt.Sprintf("%s: last fired %s ago, expected every %s (CRITICAL: stale)", name, formatOrderFiringDuration(age), formatOrderFiringDuration(expected))
 	case age >= expected+expected/2:
 		return StatusWarning, SeverityBlocking, fmt.Sprintf("%s: last fired %s ago, expected every %s (overdue)", name, formatOrderFiringDuration(age), formatOrderFiringDuration(expected))

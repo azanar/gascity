@@ -412,6 +412,24 @@ func TestOrderFiringCurrent_Stale(t *testing.T) {
 	}
 }
 
+func TestOrderFiringCurrent_ShortIntervalStaleBeforeGraceFloorIsWarning(t *testing.T) {
+	now := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
+	cityPath, cfg := orderFiringTestCity(t)
+	writeOrderFiringTestOrder(t, cityPath, "gate-sweep", "cooldown", "30s")
+	writeOrderFiringTestEvents(t, cityPath,
+		events.Event{Type: events.ControllerStarted, Ts: now.Add(-24 * time.Hour)},
+		events.Event{Type: events.OrderFired, Subject: "gate-sweep", Ts: now.Add(-2 * time.Minute)},
+	)
+
+	result := runOrderFiringCurrentTest(t, cfg, cityPath, now)
+	if result.Status != StatusWarning {
+		t.Fatalf("status = %v, want warning for short-interval lag before grace floor; msg = %s; details = %v", result.Status, result.Message, result.Details)
+	}
+	if strings.Contains(strings.Join(result.Details, "\n"), "(CRITICAL: stale)") {
+		t.Fatalf("details = %v, short-interval lag before grace floor should not be critical", result.Details)
+	}
+}
+
 func TestOrderFiringCurrent_IgnoresManualAndEventTriggers(t *testing.T) {
 	now := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
 	cityPath, cfg := orderFiringTestCity(t)
