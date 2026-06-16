@@ -1479,12 +1479,6 @@ func queuedNudgeClaimableForTargetWithStore(store beads.Store, target nudgeTarge
 	return referenced.Status == "closed"
 }
 
-func claimDueQueuedNudges(cityPath, agentName string, now time.Time) ([]queuedNudge, error) {
-	return claimDueQueuedNudgesMatching(cityPath, now, func(item queuedNudge) bool {
-		return item.Agent == agentName
-	})
-}
-
 func claimDueQueuedNudgesForTarget(cityPath string, target nudgeTarget, now time.Time) ([]queuedNudge, error) {
 	store := openNudgeBeadStore(cityPath)
 	return claimDueQueuedNudgesMatching(cityPath, now, func(item queuedNudge) bool {
