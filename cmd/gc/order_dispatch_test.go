@@ -380,7 +380,7 @@ func TestOrderDispatchResolvesPackBindingForPool(t *testing.T) {
 	if got := work.Metadata["gc.routed_to"]; got != "maintenance.dog" {
 		t.Errorf("gc.routed_to = %q, want %q (pack binding must qualify pool target)", got, "maintenance.dog")
 	}
-	assertNoDeprecatedPoolDemandMetadata(t, work.Metadata)
+	assertPoolDemandMetadata(t, work.Metadata, "maintenance.dog")
 }
 
 func TestOrderDispatchPoolLegacyFormulaWarnsWhenRootIsNotReadyVisible(t *testing.T) {

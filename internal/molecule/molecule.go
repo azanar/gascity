@@ -478,11 +478,12 @@ func Instantiate(ctx context.Context, store beads.Store, recipe *formula.Recipe,
 			if err == nil {
 				return result, nil
 			}
-			if isUnsupportedGraphApplyError(err) {
+			switch {
+			case isUnsupportedGraphApplyError(err):
 				graphApplyTracef("graph-apply unsupported fallback recipe=%s err=%v", recipe.Name, err)
-			} else if !isTransientGraphApplyError(err) {
+			case !isTransientGraphApplyError(err):
 				return nil, err
-			} else {
+			default:
 				graphApplyTracef("graph-apply transient-error retry recipe=%s err=%v", recipe.Name, err)
 				timer := time.NewTimer(graphApplyTransientRetryDelay)
 				defer timer.Stop()
@@ -495,11 +496,12 @@ func Instantiate(ctx context.Context, store beads.Store, recipe *formula.Recipe,
 				if retryErr == nil {
 					return result, nil
 				}
-				if isUnsupportedGraphApplyError(retryErr) {
+				switch {
+				case isUnsupportedGraphApplyError(retryErr):
 					graphApplyTracef("graph-apply unsupported fallback recipe=%s first_err=%v retry_err=%v", recipe.Name, err, retryErr)
-				} else if !isTransientGraphApplyError(retryErr) {
+				case !isTransientGraphApplyError(retryErr):
 					return nil, retryErr
-				} else {
+				default:
 					graphApplyTracef("graph-apply transient-error fallback recipe=%s first_err=%v retry_err=%v", recipe.Name, err, retryErr)
 				}
 			}
